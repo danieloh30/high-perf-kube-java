@@ -1,4 +1,4 @@
-# high-perf-java-kubecon-na-2025
+# High Performance Kube Native Java
 
 This project uses Quarkus, the Supersonic Subatomic Java Framework.
 
