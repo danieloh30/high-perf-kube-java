@@ -14,7 +14,7 @@ class GreetingResourceTest {
           .when().get("/hello")
           .then()
              .statusCode(200)
-             .body(is("Hello from KubeCon NA 2025"));
+             .body(is("Hello from Quarkus Java"));
     }
 
     @Test
@@ -23,7 +23,7 @@ class GreetingResourceTest {
                 .when().get("/hello/name")
                 .then()
                 .statusCode(200)
-                .body(is("Welcome Dan & Ryan at the Cloud Native Experience Track!!!"));
+                .body(is("Welcome Everyone at the Red Hat Summit 2026!!!"));
     }
 
 }
