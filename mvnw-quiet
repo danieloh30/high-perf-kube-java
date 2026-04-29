@@ -1,0 +1,4 @@
+#!/bin/bash
+# Wrapper script to suppress Java 25 Unsafe warnings from Maven dependencies
+./mvnw "$@" 2>&1 | grep -v "WARNING: A terminally deprecated method in sun.misc.Unsafe has been called" | grep -v "WARNING: sun.misc.Unsafe::objectFieldOffset" | grep -v "WARNING: Please consider reporting this to the maintainers" | grep -v "WARNING: sun.misc.Unsafe::objectFieldOffset will be removed"
+exit ${PIPESTATUS[0]}

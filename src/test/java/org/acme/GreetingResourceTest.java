@@ -14,16 +14,16 @@ class GreetingResourceTest {
           .when().get("/hello")
           .then()
              .statusCode(200)
-             .body(is("Hello from Quarkus Java"));
+             .body(is("Hello Java Developers!"));
     }
 
     @Test
     void testHelloNameEndpoint() {
         given()
-                .when().get("/hello/name")
+                .when().get("/hello/perf")
                 .then()
                 .statusCode(200)
-                .body(is("Welcome Everyone at the Red Hat Summit 2026!!!"));
+                .body(is("High Performance Kube Native Java with Quarkus"));
     }
 
 }

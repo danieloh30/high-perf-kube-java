@@ -11,13 +11,13 @@ public class GreetingResource {
     @GET
     @Produces(MediaType.TEXT_PLAIN)
     public String hello() {
-        return "Hello from Quarkus Java";
+        return "Hello Java Developers!";
     }
 
     @GET
     @Produces(MediaType.TEXT_PLAIN)
-    @Path("name")
+    @Path("perf")
     public String helloName() {
-        return "Welcome Everyone at the Red Hat Summit 2026!!!";
+        return "High Performance Kube Native Java with Quarkus";
     }
 }
