@@ -17,7 +17,16 @@ public class GreetingResource {
     @GET
     @Produces(MediaType.TEXT_PLAIN)
     @Path("perf")
-    public String helloName() {
+    public String helloPerf() {
         return "High Performance Kube Native Java with Quarkus";
+    }
+
+    @GET
+    @Produces(MediaType.TEXT_PLAIN)
+    @Path("runtime")
+    public String runtime() {
+        String vendor = System.getProperty("java.vm.name", "JVM");
+        boolean isNative = vendor.contains("Substrate") || System.getProperty("org.graalvm.nativeimage.imagecode") != null;
+        return isNative ? "Running as GraalVM Native Image 🚀" : "Running on " + vendor;
     }
 }

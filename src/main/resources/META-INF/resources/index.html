@@ -1,0 +1,482 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>⚡ High-Perf Kube Java — Performance Dashboard</title>
+  <style>
+    :root {
+      --bg:       #0d1117;
+      --card:     #161b22;
+      --border:   #30363d;
+      --accent:   #58a6ff;
+      --green:    #3fb950;
+      --yellow:   #d29922;
+      --red:      #f85149;
+      --text:     #c9d1d9;
+      --subtext:  #8b949e;
+      --native:   #a371f7;
+      --jvm:      #58a6ff;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: 'Segoe UI', system-ui, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      min-height: 100vh;
+      padding: 1.5rem;
+    }
+    header {
+      display: flex;
+      align-items: center;
+      gap: 1rem;
+      margin-bottom: 2rem;
+      padding-bottom: 1rem;
+      border-bottom: 1px solid var(--border);
+    }
+    header h1 { font-size: 1.6rem; font-weight: 700; }
+    header span { font-size: 0.85rem; color: var(--subtext); }
+    .badge {
+      display: inline-block;
+      padding: 0.2rem 0.65rem;
+      border-radius: 999px;
+      font-size: 0.78rem;
+      font-weight: 600;
+    }
+    .badge-native { background: #2d2040; color: var(--native); border: 1px solid var(--native); }
+    .badge-jvm    { background: #0d2044; color: var(--jvm);    border: 1px solid var(--jvm);    }
+    .badge-up     { background: #0d2b0d; color: var(--green);  border: 1px solid var(--green);  }
+    .badge-down   { background: #2d0d0d; color: var(--red);    border: 1px solid var(--red);    }
+
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+      gap: 1rem;
+      margin-bottom: 1.5rem;
+    }
+    .card {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 1.25rem 1.5rem;
+    }
+    .card h3 { font-size: 0.8rem; text-transform: uppercase; letter-spacing: 0.05em; color: var(--subtext); margin-bottom: 0.6rem; }
+    .card .value { font-size: 2rem; font-weight: 700; }
+    .card .sub   { font-size: 0.8rem; color: var(--subtext); margin-top: 0.3rem; }
+    .green { color: var(--green); }
+    .yellow{ color: var(--yellow); }
+    .red   { color: var(--red); }
+    .accent{ color: var(--accent); }
+    .native-color { color: var(--native); }
+
+    .bar-wrap { width: 100%; background: var(--border); border-radius: 999px; height: 8px; margin-top: 0.5rem; overflow: hidden; }
+    .bar      { height: 100%; border-radius: 999px; transition: width 0.6s ease; }
+    .bar-heap { background: var(--accent); }
+
+    /* Benchmark panel */
+    .bench-panel {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 1.5rem;
+      margin-bottom: 1.5rem;
+    }
+    .bench-panel h2 { font-size: 1rem; font-weight: 600; margin-bottom: 1rem; }
+    .bench-controls { display: flex; flex-wrap: wrap; gap: 0.75rem; align-items: flex-end; margin-bottom: 1.25rem; }
+    .bench-controls label { font-size: 0.8rem; color: var(--subtext); display: block; margin-bottom: 0.25rem; }
+    .bench-controls input[type=range] { width: 160px; accent-color: var(--accent); }
+    .bench-controls input[type=number] { width: 100px; background: var(--bg); border: 1px solid var(--border); color: var(--text); border-radius: 6px; padding: 0.35rem 0.6rem; font-size: 0.9rem; }
+    button {
+      cursor: pointer;
+      border: none;
+      border-radius: 6px;
+      padding: 0.45rem 1rem;
+      font-size: 0.88rem;
+      font-weight: 600;
+      transition: opacity 0.15s;
+    }
+    button:hover { opacity: 0.85; }
+    button:disabled { opacity: 0.4; cursor: not-allowed; }
+    .btn-primary { background: var(--accent); color: #000; }
+    .btn-green   { background: var(--green);  color: #000; }
+    .btn-outline { background: transparent; border: 1px solid var(--border); color: var(--text); }
+
+    .result-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 0.75rem;
+    }
+    .result-box {
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 1rem 1.25rem;
+    }
+    .result-box h4 { font-size: 0.78rem; color: var(--subtext); text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 0.5rem; }
+    .result-value { font-size: 1.4rem; font-weight: 700; }
+    .result-detail { font-size: 0.78rem; color: var(--subtext); margin-top: 0.25rem; }
+
+    /* History table */
+    .history-panel {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 1.5rem;
+      margin-bottom: 1.5rem;
+    }
+    .history-panel h2 { font-size: 1rem; font-weight: 600; margin-bottom: 1rem; }
+    table { width: 100%; border-collapse: collapse; font-size: 0.85rem; }
+    th { text-align: left; color: var(--subtext); font-weight: 500; padding: 0.4rem 0.75rem; border-bottom: 1px solid var(--border); }
+    td { padding: 0.45rem 0.75rem; border-bottom: 1px solid var(--border); font-variant-numeric: tabular-nums; }
+    tr:last-child td { border-bottom: none; }
+    .faster { color: var(--green); font-weight: 600; }
+    .slower { color: var(--red); font-weight: 600; }
+
+    /* Health panel */
+    .health-panel {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 1.5rem;
+      margin-bottom: 1.5rem;
+    }
+    .health-panel h2 { font-size: 1rem; font-weight: 600; margin-bottom: 1rem; }
+    .health-checks { display: flex; flex-wrap: wrap; gap: 0.75rem; }
+    .check-item { background: var(--bg); border: 1px solid var(--border); border-radius: 8px; padding: 0.75rem 1rem; min-width: 180px; }
+    .check-name { font-size: 0.8rem; color: var(--subtext); margin-bottom: 0.3rem; }
+    .check-data { font-size: 0.75rem; color: var(--subtext); margin-top: 0.4rem; }
+
+    .refresh-row { display: flex; align-items: center; gap: 0.75rem; margin-bottom: 1.5rem; }
+    .refresh-row label { font-size: 0.82rem; color: var(--subtext); }
+    .last-updated { font-size: 0.78rem; color: var(--subtext); margin-left: auto; }
+    #spinner { display: none; width: 16px; height: 16px; border: 2px solid var(--border); border-top-color: var(--accent); border-radius: 50%; animation: spin 0.7s linear infinite; }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    footer { text-align: center; font-size: 0.78rem; color: var(--subtext); padding-top: 1.5rem; border-top: 1px solid var(--border); }
+    a { color: var(--accent); text-decoration: none; }
+    a:hover { text-decoration: underline; }
+  </style>
+</head>
+<body>
+
+<header>
+  <div>
+    <h1>⚡ High-Perf Kube Java</h1>
+    <span>KubeCon India 2026 — Live Performance Dashboard</span>
+  </div>
+  <span id="runtime-badge" class="badge badge-jvm">JVM</span>
+</header>
+
+<!-- Refresh controls -->
+<div class="refresh-row">
+  <button class="btn-outline" onclick="refreshAll()">↺ Refresh</button>
+  <label>
+    <input type="checkbox" id="auto-refresh" onchange="toggleAutoRefresh()" /> Auto-refresh (5 s)
+  </label>
+  <div id="spinner"></div>
+  <span class="last-updated" id="last-updated">–</span>
+</div>
+
+<!-- Stat cards -->
+<div class="grid" id="stat-cards">
+  <div class="card">
+    <h3>Runtime Type</h3>
+    <div class="value accent" id="stat-runtime">–</div>
+    <div class="sub" id="stat-vm">–</div>
+  </div>
+  <div class="card">
+    <h3>Uptime</h3>
+    <div class="value green" id="stat-uptime">–</div>
+    <div class="sub" id="stat-uptime-ms">–</div>
+  </div>
+  <div class="card">
+    <h3>Heap Used / Max</h3>
+    <div class="value" id="stat-heap">–</div>
+    <div class="bar-wrap"><div class="bar bar-heap" id="heap-bar" style="width:0%"></div></div>
+    <div class="sub" id="stat-heap-sub">–</div>
+  </div>
+  <div class="card">
+    <h3>Non-Heap (Classes)</h3>
+    <div class="value accent" id="stat-nonheap">–</div>
+    <div class="sub">Loaded classes &amp; JIT code</div>
+  </div>
+  <div class="card">
+    <h3>CPU Cores</h3>
+    <div class="value yellow" id="stat-cores">–</div>
+    <div class="sub">Available processors</div>
+  </div>
+  <div class="card">
+    <h3>Java Version</h3>
+    <div class="value" id="stat-java">–</div>
+    <div class="sub" id="stat-java-vendor">–</div>
+  </div>
+</div>
+
+<!-- Health -->
+<div class="health-panel">
+  <h2>🩺 Health Checks <a href="/q/health" target="_blank" style="font-size:0.8rem;margin-left:0.5rem">/q/health ↗</a></h2>
+  <div class="health-checks" id="health-checks">
+    <div class="check-item"><div class="check-name">Loading…</div></div>
+  </div>
+</div>
+
+<!-- Benchmark -->
+<div class="bench-panel">
+  <h2>🔥 Compute Benchmarks — Run live &amp; compare JVM vs Native Image</h2>
+  <div class="bench-controls">
+    <div>
+      <label>Fibonacci n = <strong id="fib-label">40</strong></label>
+      <input type="range" min="30" max="45" value="40" id="fib-slider" oninput="document.getElementById('fib-label').textContent=this.value" />
+    </div>
+    <button class="btn-primary" id="fib-btn" onclick="runFib()">▶ Run fib(n)</button>
+    <div style="margin-left:1rem">
+      <label>Prime sieve limit</label>
+      <input type="number" id="prime-limit" value="1000000" min="1000" max="10000000" step="100000" />
+    </div>
+    <button class="btn-green" id="prime-btn" onclick="runPrimes()">▶ Run Sieve</button>
+  </div>
+  <div class="result-grid">
+    <div class="result-box">
+      <h4>Fibonacci Result</h4>
+      <div class="result-value accent" id="fib-result">–</div>
+      <div class="result-detail" id="fib-detail">–</div>
+    </div>
+    <div class="result-box">
+      <h4>Prime Sieve Result</h4>
+      <div class="result-value green" id="prime-result">–</div>
+      <div class="result-detail" id="prime-detail">–</div>
+    </div>
+  </div>
+</div>
+
+<!-- History -->
+<div class="history-panel">
+  <h2>📊 Benchmark History <span id="history-clear" style="font-size:0.8rem;color:var(--subtext);cursor:pointer;margin-left:0.5rem" onclick="clearHistory()">(clear)</span></h2>
+  <table>
+    <thead>
+      <tr>
+        <th>#</th>
+        <th>Type</th>
+        <th>Input</th>
+        <th>Duration (ms)</th>
+        <th>Result</th>
+        <th>Runtime</th>
+        <th>Time</th>
+      </tr>
+    </thead>
+    <tbody id="history-body">
+      <tr><td colspan="7" style="color:var(--subtext)">No benchmarks run yet.</td></tr>
+    </tbody>
+  </table>
+</div>
+
+<!-- Links -->
+<div class="health-panel">
+  <h2>🔗 Useful Links</h2>
+  <div style="display:flex;flex-wrap:wrap;gap:0.75rem;margin-top:0.5rem">
+    <a href="/q/health"        target="_blank" class="badge badge-up"    style="padding:0.4rem 0.9rem;font-size:0.85rem">/q/health</a>
+    <a href="/q/health/live"   target="_blank" class="badge badge-up"    style="padding:0.4rem 0.9rem;font-size:0.85rem">/q/health/live</a>
+    <a href="/q/health/ready"  target="_blank" class="badge badge-up"    style="padding:0.4rem 0.9rem;font-size:0.85rem">/q/health/ready</a>
+    <a href="/q/metrics"       target="_blank" class="badge badge-jvm"   style="padding:0.4rem 0.9rem;font-size:0.85rem">/q/metrics (Prometheus)</a>
+    <a href="/perf/info"       target="_blank" class="badge badge-native" style="padding:0.4rem 0.9rem;font-size:0.85rem">/perf/info</a>
+    <a href="/perf/fib?n=40"   target="_blank" class="badge badge-native" style="padding:0.4rem 0.9rem;font-size:0.85rem">/perf/fib?n=40</a>
+    <a href="/perf/primes"     target="_blank" class="badge badge-native" style="padding:0.4rem 0.9rem;font-size:0.85rem">/perf/primes</a>
+    <a href="/hello"           target="_blank" class="badge badge-jvm"   style="padding:0.4rem 0.9rem;font-size:0.85rem">/hello</a>
+    <a href="/hello/runtime"   target="_blank" class="badge badge-jvm"   style="padding:0.4rem 0.9rem;font-size:0.85rem">/hello/runtime</a>
+    <a href="/q/dev/"          target="_blank" class="badge badge-jvm"   style="padding:0.4rem 0.9rem;font-size:0.85rem">Dev UI ↗</a>
+  </div>
+</div>
+
+<footer>
+  Built with <a href="https://quarkus.io" target="_blank">Quarkus 3.x</a> •
+  <a href="https://github.com/danieloh30/high-perf-kube-java" target="_blank">GitHub</a> •
+  KubeCon India 2026
+</footer>
+
+<script>
+  // ── State ──────────────────────────────────────────────────────────────────
+  let autoTimer = null;
+  let historyRows = [];
+  let historyCounter = 0;
+  let currentRuntime = 'jvm';
+
+  // ── Fetch helpers ──────────────────────────────────────────────────────────
+  async function fetchJSON(url) {
+    const r = await fetch(url);
+    if (!r.ok) throw new Error(`HTTP ${r.status}`);
+    return r.json();
+  }
+
+  async function fetchText(url) {
+    const r = await fetch(url);
+    if (!r.ok) throw new Error(`HTTP ${r.status}`);
+    return r.text();
+  }
+
+  // ── Stats refresh ──────────────────────────────────────────────────────────
+  async function refreshStats() {
+    try {
+      const info = await fetchJSON('/perf/info');
+      currentRuntime = info.runtime_type || 'jvm';
+      const isNative = currentRuntime === 'native-image';
+
+      // Badge
+      const badge = document.getElementById('runtime-badge');
+      badge.textContent = isNative ? '🚀 Native Image' : '☕ JVM';
+      badge.className = 'badge ' + (isNative ? 'badge-native' : 'badge-jvm');
+
+      setText('stat-runtime', isNative ? 'Native Image' : 'JVM');
+      document.getElementById('stat-runtime').className = 'value ' + (isNative ? 'native-color' : 'accent');
+      setText('stat-vm',   info.vm_name + ' · ' + info.vm_vendor);
+      setText('stat-uptime', info.uptime_human);
+      setText('stat-uptime-ms', info.uptime_ms + ' ms since start');
+
+      const used = info.heap_used_mb;
+      const max  = info.heap_max_mb;
+      const pct  = max > 0 ? Math.round((used / max) * 100) : 0;
+      setText('stat-heap', used + ' MB');
+      document.getElementById('stat-heap').className = 'value ' + (pct > 80 ? 'red' : pct > 60 ? 'yellow' : 'green');
+      document.getElementById('heap-bar').style.width = pct + '%';
+      setText('stat-heap-sub', `${pct}% of ${max} MB max · committed: ${info.heap_committed_mb} MB`);
+
+      setText('stat-nonheap', info.non_heap_used_mb + ' MB');
+      setText('stat-cores', info.available_processors);
+      setText('stat-java', 'Java ' + info.java_version);
+      setText('stat-java-vendor', info.vm_vendor);
+
+    } catch (e) {
+      console.error('Stats fetch failed', e);
+    }
+  }
+
+  // ── Health refresh ─────────────────────────────────────────────────────────
+  async function refreshHealth() {
+    try {
+      const h = await fetchJSON('/q/health');
+      const container = document.getElementById('health-checks');
+      container.innerHTML = '';
+      for (const check of (h.checks || [])) {
+        const isUp = check.status === 'UP';
+        const el = document.createElement('div');
+        el.className = 'check-item';
+        let dataHtml = '';
+        if (check.data) {
+          dataHtml = Object.entries(check.data)
+            .map(([k, v]) => `<div class="check-data">${k}: <strong>${v}</strong></div>`)
+            .join('');
+        }
+        el.innerHTML = `
+          <div class="check-name">${check.name}</div>
+          <span class="badge ${isUp ? 'badge-up' : 'badge-down'}">${check.status}</span>
+          ${dataHtml}`;
+        container.appendChild(el);
+      }
+    } catch (e) {
+      document.getElementById('health-checks').innerHTML =
+        '<div class="check-item"><div class="check-name red">Health endpoint unreachable</div></div>';
+    }
+  }
+
+  // ── Benchmark helpers ──────────────────────────────────────────────────────
+  function addHistory(type, input, durationMs, resultStr) {
+    historyCounter++;
+    const now = new Date().toLocaleTimeString();
+    historyRows.unshift({ id: historyCounter, type, input, durationMs, resultStr, runtime: currentRuntime, time: now });
+    if (historyRows.length > 20) historyRows.pop();
+    renderHistory();
+  }
+
+  function renderHistory() {
+    const tbody = document.getElementById('history-body');
+    if (historyRows.length === 0) {
+      tbody.innerHTML = '<tr><td colspan="7" style="color:var(--subtext)">No benchmarks run yet.</td></tr>';
+      return;
+    }
+    tbody.innerHTML = historyRows.map((r, i) => {
+      // Compare with previous same-type row if exists
+      const prev = historyRows.slice(i + 1).find(x => x.type === r.type);
+      let speedClass = '';
+      let speedNote = '';
+      if (prev) {
+        const ratio = prev.durationMs / r.durationMs;
+        if (ratio > 1.05) { speedClass = 'faster'; speedNote = ` (${ratio.toFixed(1)}× faster)`; }
+        else if (ratio < 0.95) { speedClass = 'slower'; speedNote = ` (${(1/ratio).toFixed(1)}× slower)`; }
+      }
+      return `<tr>
+        <td>${r.id}</td>
+        <td>${r.type}</td>
+        <td>${r.input}</td>
+        <td class="${speedClass}">${r.durationMs} ms${speedNote}</td>
+        <td>${r.resultStr}</td>
+        <td><span class="badge ${r.runtime === 'native-image' ? 'badge-native' : 'badge-jvm'}">${r.runtime}</span></td>
+        <td>${r.time}</td>
+      </tr>`;
+    }).join('');
+  }
+
+  function clearHistory() {
+    historyRows = [];
+    historyCounter = 0;
+    renderHistory();
+  }
+
+  // ── Fibonacci ──────────────────────────────────────────────────────────────
+  async function runFib() {
+    const n = document.getElementById('fib-slider').value;
+    const btn = document.getElementById('fib-btn');
+    btn.disabled = true;
+    setText('fib-result', '⏳ computing…');
+    setText('fib-detail', '');
+    try {
+      const data = await fetchJSON(`/perf/fib?n=${n}`);
+      setText('fib-result', data.result.toLocaleString());
+      setText('fib-detail', `fib(${data.input_n}) in ${data.duration_ms} ms  (${(data.duration_ns / 1e6).toFixed(2)} ms precise)`);
+      addHistory('Fibonacci', `fib(${data.input_n})`, data.duration_ms, data.result.toLocaleString());
+    } catch (e) {
+      setText('fib-result', '❌ error');
+      setText('fib-detail', e.message);
+    } finally { btn.disabled = false; }
+  }
+
+  // ── Prime Sieve ────────────────────────────────────────────────────────────
+  async function runPrimes() {
+    const limit = document.getElementById('prime-limit').value;
+    const btn = document.getElementById('prime-btn');
+    btn.disabled = true;
+    setText('prime-result', '⏳ computing…');
+    setText('prime-detail', '');
+    try {
+      const data = await fetchJSON(`/perf/primes?limit=${limit}`);
+      setText('prime-result', data.prime_count.toLocaleString() + ' primes');
+      setText('prime-detail', `sieve(${data.limit.toLocaleString()}) → largest: ${data.largest_prime.toLocaleString()} · in ${data.duration_ms} ms`);
+      addHistory('Prime Sieve', `limit=${data.limit.toLocaleString()}`, data.duration_ms, `${data.prime_count.toLocaleString()} primes`);
+    } catch (e) {
+      setText('prime-result', '❌ error');
+      setText('prime-detail', e.message);
+    } finally { btn.disabled = false; }
+  }
+
+  // ── Auto-refresh ───────────────────────────────────────────────────────────
+  function toggleAutoRefresh() {
+    const on = document.getElementById('auto-refresh').checked;
+    if (on) { autoTimer = setInterval(refreshAll, 5000); }
+    else    { clearInterval(autoTimer); autoTimer = null; }
+  }
+
+  async function refreshAll() {
+    document.getElementById('spinner').style.display = 'block';
+    await Promise.all([refreshStats(), refreshHealth()]);
+    document.getElementById('spinner').style.display = 'none';
+    document.getElementById('last-updated').textContent = 'Updated: ' + new Date().toLocaleTimeString();
+  }
+
+  function setText(id, val) {
+    const el = document.getElementById(id);
+    if (el) el.textContent = String(val ?? '–');
+  }
+
+  // ── Init ───────────────────────────────────────────────────────────────────
+  refreshAll();
+</script>
+</body>
+</html>
