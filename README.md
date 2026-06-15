@@ -80,7 +80,7 @@ The dashboard shows — live, auto-refreshing:
 
 ---
 
-## 🎯 Demo Flow (KubeCon)
+## 🎯 Demo Flow
 
 1. **Start in JVM mode** → open dashboard → note uptime (~1 s) and heap (~60 MB)
 2. **Run fib(40)** — via the dashboard slider, or directly from the terminal:
