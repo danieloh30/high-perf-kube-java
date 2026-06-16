@@ -1,6 +1,6 @@
 # ⚡ High Performance Kube Native Java
 
-A **KubeCon India 2026** performance demo that showcases the difference between
+A **Java** performance demo that showcases the difference between
 running a Quarkus application as a standard JVM app versus a **GraalVM Native Image**
 — with live, browser-visible metrics.
 
