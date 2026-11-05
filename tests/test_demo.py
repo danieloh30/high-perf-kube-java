@@ -73,7 +73,7 @@ class DemoTests(unittest.TestCase):
         subprocess.run(['git','-C',str(self.root),'-c','user.name=Test','-c','user.email=test@example.invalid','commit','-qm','test'],check=True)
         with socket.socket() as sock:
             sock.bind(('127.0.0.1',0));self.port=sock.getsockname()[1]
-        self.env = patch.dict(os.environ, {'JAVA_HOME':str(self.bin.parent), 'FAKE_NATIVE_SOURCE':str(self.native_source), 'DEMO_PORT':str(self.port),'DEMO_CPUS':'2','DEMO_XMS':'64m','DEMO_XMX':'256m'})
+        self.env = patch.dict(os.environ, {'JAVA_HOME':str(self.bin.parent), 'GRAALVM_HOME':'', 'SDKMAN_CANDIDATES_DIR':str(self.root/'sdk/candidates'), 'FAKE_NATIVE_SOURCE':str(self.native_source), 'DEMO_PORT':str(self.port),'DEMO_CPUS':'2','DEMO_XMS':'64m','DEMO_XMX':'256m'})
         self.env.start()
         self.d = demo.Demo(self.root)
 
@@ -156,6 +156,25 @@ class DemoTests(unittest.TestCase):
                 self.d.no_dev_mode()
         with patch.object(demo,'capture',side_effect=['openjdk version "21.0.1"','native-image 25.0.1']):
             with self.assertRaisesRegex(demo.DemoError,'matching GraalVM JDK 25'):
+                self.d.toolchain()
+
+    def test_graalvm_home_can_differ_from_java_home(self):
+        with patch.dict(os.environ,{'GRAALVM_HOME':str(self.bin.parent),'JAVA_HOME':str(self.root/'temurin')}):
+            tools=self.d.toolchain()
+        self.assertEqual(tools['java_home'],str(self.bin.parent))
+
+    def test_sdkman_graalvm_is_found_when_path_and_java_home_do_not_expose_it(self):
+        home=self.root/'sdk/candidates/java/25-graalce'
+        (home/'bin').mkdir(parents=True)
+        for name in ['java','native-image']:
+            (home/'bin'/name).write_text(SERVER)
+            (home/'bin'/name).chmod(0o755)
+        with patch.dict(os.environ,{'JAVA_HOME':str(self.root/'temurin')}), patch.object(demo.shutil,'which',return_value=None):
+            self.assertEqual(self.d.toolchain()['java_home'],str(home.resolve()))
+
+    def test_invalid_explicit_graalvm_home_has_actionable_error(self):
+        with patch.dict(os.environ,{'GRAALVM_HOME':str(self.root/'missing')}):
+            with self.assertRaisesRegex(demo.DemoError,'No complete GraalVM installation'):
                 self.d.toolchain()
 
     def test_failed_launch_removes_state_but_retains_diagnostic_log(self):

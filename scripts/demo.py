@@ -90,15 +90,18 @@ def peak_mib(text, system):
     return None
 
 
-def executable(name):
-    home = os.environ.get('JAVA_HOME')
-    path = Path(home) / 'bin' / name if home else None
-    if path and path.is_file() and os.access(path, os.X_OK):
-        return str(path)
-    found = shutil.which(name)
-    if not found:
-        raise DemoError(f'{name} not found. Install GraalVM JDK 25 with native-image and set JAVA_HOME/PATH.')
-    return found
+def checked_toolchain(home):
+    home = Path(home).expanduser().absolute()
+    java, compiler = home / 'bin/java', home / 'bin/native-image'
+    if not all(path.is_file() and os.access(path, os.X_OK) for path in [java, compiler]):
+        raise DemoError(f'No complete GraalVM installation at {home}: bin/java and bin/native-image are required.')
+    java_version = capture([str(java), '-version'])
+    native_version = capture([str(compiler), '--version'])
+    match = re.search(r'(?:openjdk|java)\s+(?:version\s+)?"?(\d+)', java_version)
+    if not match or match[1] != '25' or not re.search(r'native-image\s+25(?:\.|\s|$)', native_version):
+        raise DemoError('Use matching GraalVM JDK 25 java and native-image.\n' + java_version + '\n' + native_version)
+    return dict(java=str(java), java_home=str(home), java_version=java_version,
+                native_image=str(compiler), native_version=native_version)
 
 
 class Demo:
@@ -199,15 +202,49 @@ class Demo:
         return manifest
 
     def toolchain(self):
-        java, compiler = executable('java'), executable('native-image')
-        java_version = capture([java, '-version'])
-        native_version = capture([compiler, '--version'])
-        match = re.search(r'(?:openjdk|java)\s+(?:version\s+)?"?(\d+)', java_version)
-        if not match or match[1] != '25' or not re.search(r'native-image\s+25(?:\.|\s|$)', native_version):
-            raise DemoError('Use matching GraalVM JDK 25 java and native-image.\n' + java_version + '\n' + native_version)
-        if Path(java).absolute().parent != Path(compiler).absolute().parent:
-            raise DemoError('java and native-image must come from the same GraalVM installation. Set JAVA_HOME.')
-        return dict(java=java, java_home=str(Path(java).absolute().parent.parent), java_version=java_version, native_image=compiler, native_version=native_version)
+        # Explicit GraalVM configuration wins; JAVA_HOME may be a separate Temurin JDK.
+        if os.environ.get('GRAALVM_HOME'):
+            return checked_toolchain(os.environ['GRAALVM_HOME'])
+        java_home = os.environ.get('JAVA_HOME')
+        if java_home and (Path(java_home).expanduser() / 'bin/native-image').is_file():
+            return checked_toolchain(java_home)
+        compiler = shutil.which('native-image')
+        failures = []
+        if compiler:
+            # A PATH entry can be a symlink into lib/svm/bin. Find its JDK root.
+            for location in [Path(compiler).absolute(), Path(compiler).resolve()]:
+                for home in location.parents:
+                    if (home / 'bin/java').is_file() and (home / 'bin/native-image').is_file():
+                        try:
+                            return checked_toolchain(home)
+                        except DemoError as exc:
+                            failures.append(str(exc))
+                            break
+        sdkman = Path(os.environ.get('SDKMAN_CANDIDATES_DIR') or
+                      str(Path(os.environ.get('SDKMAN_DIR') or str(Path.home() / '.sdkman')) / 'candidates')) / 'java'
+        current = sdkman / 'current'
+        if (current / 'bin/native-image').is_file():
+            try:
+                return checked_toolchain(current.resolve())
+            except DemoError:
+                pass
+        compatible = {}
+        if sdkman.is_dir():
+            for home in sorted(sdkman.iterdir()):
+                if home.name == 'current' or not (home / 'bin/native-image').is_file():
+                    continue
+                try:
+                    tools = checked_toolchain(home.resolve())
+                    compatible[tools['java_home']] = tools
+                except DemoError as exc:
+                    failures.append(str(exc))
+        if len(compatible) == 1:
+            return next(iter(compatible.values()))
+        if len(compatible) > 1:
+            raise DemoError('Multiple GraalVM JDK 25 installations found. Set GRAALVM_HOME to one of:\n' + '\n'.join(compatible))
+        details = '\n' + '\n'.join(failures) if failures else ''
+        raise DemoError('GraalVM JDK 25 could not be located. Set GRAALVM_HOME or JAVA_HOME to its installation directory. '
+                        f'Also checked PATH and {sdkman}.{details}')
 
     def build(self, runtime, directory):
         costs = directory / 'costs'
@@ -266,15 +303,17 @@ class Demo:
         directory = self.home / 'builds' / (dt.datetime.now(dt.timezone.utc).strftime('%Y%m%dT%H%M%SZ-') + uuid.uuid4().hex[:8])
         directory.mkdir(parents=True)
         # Pin Maven's JDK and native compiler to the checked toolchain, even if PATH differs.
-        old_home = os.environ.get('JAVA_HOME')
-        os.environ['JAVA_HOME'] = tools['java_home']
+        old_homes = {key: os.environ.get(key) for key in ['JAVA_HOME', 'GRAALVM_HOME']}
+        for key in old_homes:
+            os.environ[key] = tools['java_home']
         try:
             digests = {runtime: self.build(runtime, directory) for runtime in ['jvm', 'native']}
         finally:
-            if old_home is None:
-                os.environ.pop('JAVA_HOME', None)
-            else:
-                os.environ['JAVA_HOME'] = old_home
+            for key, value in old_homes.items():
+                if value is None:
+                    os.environ.pop(key, None)
+                else:
+                    os.environ[key] = value
         if before != source_hash(self.root):
             raise DemoError('Sources changed during the build; pair was not published. Run prepare again.')
         manifest = dict(version=1, bundle=str(directory.relative_to(self.home)), source_hash=before,
@@ -306,7 +345,7 @@ class Demo:
         token = uuid.uuid4().hex
         flags = [f'-Xms{settings["xms"]}', f'-Xmx{settings["xmx"]}', f'-XX:ActiveProcessorCount={settings["cpus"]}',
                  f'-Dquarkus.http.port={settings["port"]}', '-Dquarkus.http.host=127.0.0.1', f'-Ddemo.launch.id={token}']
-        args = [executable('java')] + flags + ['-jar', str(directory / 'jvm/quarkus-app/quarkus-run.jar')] if runtime == 'jvm' else [str(directory / 'native/app')] + flags
+        args = [manifest['toolchain']['java']] + flags + ['-jar', str(directory / 'jvm/quarkus-app/quarkus-run.jar')] if runtime == 'jvm' else [str(directory / 'native/app')] + flags
         log_dir = self.home / 'logs'
         log_dir.mkdir(exist_ok=True)
         log = log_dir / f'{runtime}-{token[:8]}.log'

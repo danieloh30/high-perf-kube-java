@@ -18,7 +18,18 @@ the background, and waits for `/perf/info` plus `/q/health/ready`. Open
 http://localhost:8080. No benchmark is run by the script.
 
 Prerequisites: macOS or Linux, Python 3.9+, Git, and **GraalVM JDK 25 with
-native-image**. Set `JAVA_HOME` to that GraalVM installation. Maven uses the
+native-image**. The script checks `GRAALVM_HOME`, a GraalVM `JAVA_HOME`,
+`native-image` on `PATH`, then SDKMAN's current or uniquely matching JDK 25.
+A separate Temurin `JAVA_HOME` does not prevent SDKMAN GraalVM discovery. To
+select a specific installation explicitly:
+
+```sh
+GRAALVM_HOME="$HOME/.sdkman/candidates/java/25-graalce" ./demo.sh up
+```
+
+Both builds use the selected GraalVM JDK; packaged JVM launches reuse its recorded
+Java executable. Multiple matching SDKMAN installations require an explicit
+selection. No global shell configuration is changed. Maven uses the
 repository wrapper; the first build needs dependency downloads. Stop this
 checkout's dev mode first (MCP: `quarkus_stop`); the script refuses to build over
 it or take over an occupied port. Native compilation can take several minutes.

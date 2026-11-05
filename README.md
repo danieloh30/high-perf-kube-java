@@ -13,6 +13,7 @@ Start the complete local workflow from this checkout:
 ```
 
 Requires macOS/Linux, Python 3.9+, and GraalVM JDK 25 with native-image.
+GraalVM is discovered through `GRAALVM_HOME`, `JAVA_HOME`, `PATH`, or SDKMAN.
 Use `./demo.sh prepare` before the talk, and `./demo.sh costs` for measured build
 costs. Artifacts are preserved in separate timestamped bundles and reused until
 application sources change. `status` and `logs` provide launch details.
