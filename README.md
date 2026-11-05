@@ -1,264 +1,75 @@
-# ⚡ High Performance Kube Native Java
-
-A **Java** performance demo that showcases the difference between
-running a Quarkus application as a standard JVM app versus a **GraalVM Native Image**
-— with live, browser-visible metrics.
-
-Built with **[Quarkus 3.x](https://quarkus.io)** · Java 25 · Micrometer · SmallRye Health
-
----
-
-## 🚀 Quick Start
-
-```shell
-./mvnw quarkus:dev          # JVM mode  – open http://localhost:8080
-```
-
-For the full native-image demo (requires GraalVM or container build):
-
-```shell
-# Build native (GraalVM locally)
-./mvnw package -Dnative
-
-# Build native inside a container (no local GraalVM needed)
-./mvnw package -Dnative -Dquarkus.native.container-build=true
-
-# Run native
-./target/high-perf-kube-java-1.0.0-SNAPSHOT-runner
-```
-
----
-
-## 🖥️ Performance Dashboard
-
-Open **[http://localhost:8080](http://localhost:8080)** in a browser.
-
-The dashboard shows — live, auto-refreshing:
-
-| Panel | What you see |
-|---|---|
-| **Runtime Type** | `JVM` or `Native Image` badge |
-| **Uptime** | Seconds since start (dramatic in native mode!) |
-| **Heap Used / Max** | Colour-coded bar chart |
-| **Non-Heap** | Loaded classes + JIT-compiled code size |
-| **CPU Cores** | Available processors |
-| **Java Version** | Runtime version & vendor |
-| **Health Checks** | Live liveness + readiness status with JVM data |
-| **Fibonacci Benchmark** | Naïve recursive fib(n) — drag a slider, click Run |
-| **Prime Sieve Benchmark** | Sieve of Eratosthenes up to N — shows prime count & largest prime |
-| **History Table** | Timestamped results with ×-faster comparisons between runs |
-
----
-
-## 📡 API Endpoints
-
-### Greeting
-
-| Method | Path | Description |
-|---|---|---|
-| `GET` | `/hello` | Basic greeting |
-| `GET` | `/hello/perf` | Performance tagline |
-| `GET` | `/hello/runtime` | JVM vs Native Image detection string |
-
-### Performance
-
-| Method | Path | Query params | Description |
-|---|---|---|---|
-| `GET` | `/perf/info` | – | JSON: uptime, heap, non-heap, java version, runtime type |
-| `GET` | `/perf/fib` | `n` (1–45, default 40) | Naïve recursive Fibonacci — great for comparing JVM/native compute speed |
-| `GET` | `/perf/primes` | `limit` (100–10 000 000, default 1 000 000) | Sieve of Eratosthenes — memory + CPU bound |
-
-### Observability
-
-| Path | Description |
-|---|---|
-| `/q/health` | Combined health (liveness + readiness) |
-| `/q/health/live` | Liveness — includes heap stats |
-| `/q/health/ready` | Readiness — includes measured startup time |
-| `/q/metrics` | Prometheus scrape endpoint |
-| `/q/dev/` | Quarkus Dev UI (dev mode only) |
-
----
-
-## 🎯 Demo Flow
-
-1. **Start in JVM mode** → open dashboard → note uptime (~1 s) and heap (~60 MB)
-2. **Run fib(40)** — via the dashboard slider, or directly from the terminal:
-
-   ```shell
-   # Default n=40
-   curl http://localhost:8080/perf/fib
-
-   # Custom n (1–45)
-   curl "http://localhost:8080/perf/fib?n=42"
-   ```
-
-   Example response:
-   ```json
-   {
-     "input_n": 40,
-     "result": 102334155,
-     "duration_ms": 712,
-     "duration_ns": 712345678
-   }
-   ```
-
-3. **Run Sieve(1 000 000)** — via the dashboard input, or from the terminal:
-
-   ```shell
-   # Default limit=1_000_000
-   curl http://localhost:8080/perf/primes
-
-   # Custom limit (100–10_000_000)
-   curl "http://localhost:8080/perf/primes?limit=5000000"
-   ```
-
-   Example response:
-   ```json
-   {
-     "limit": 1000000,
-     "prime_count": 78498,
-     "largest_prime": 999983,
-     "duration_ms": 28,
-     "duration_ns": 28341567
-   }
-   ```
-
-4. **Stop, rebuild as native, restart** → same dashboard URL
-5. Notice the uptime badge is now `< 50 ms` — and the heap is a fraction of the JVM
-6. **Re-run the exact same curl commands** → compare duration_ms side-by-side:
-
-   ```shell
-   # Quick side-by-side loop — run on both JVM and native, paste results into the history table
-   for i in 1 2 3; do
-     curl -s http://localhost:8080/perf/fib | python3 -c "import sys,json; d=json.load(sys.stdin); print(f'fib({d[\"input_n\"]}) = {d[\"result\"]}  [{d[\"duration_ms\"]} ms]')"
-   done
-   ```
-
-7. History table in the dashboard shows **×-faster** comparisons automatically between runs
-8. Open `/q/health/ready` — startup time is embedded in the JSON:
-
-   ```shell
-   curl -s http://localhost:8080/q/health/ready | python3 -m json.tool
-   ```
-
-   ```json
-   {
-     "status": "UP",
-     "checks": [
-       {
-         "name": "app-readiness",
-         "status": "UP",
-         "data": {
-           "startup_time_ms": 47,
-           "startup_human": "47 ms"
-         }
-       }
-     ]
-   }
-   ```
-
-### Example Output Comparison
-
-```json
-// JVM  /perf/info
-{ "runtime_type": "jvm", "uptime_human": "2s", "heap_used_mb": 62.4 }
-
-// Native  /perf/info
-{ "runtime_type": "native-image", "uptime_human": "48ms", "heap_used_mb": 8.1 }
-```
-
-### Full curl cheat-sheet
-
-```shell
-# Runtime info
-curl -s http://localhost:8080/perf/info | python3 -m json.tool
-
-# Fibonacci — adjust n (max 45)
-curl -s "http://localhost:8080/perf/fib?n=40"
-curl -s "http://localhost:8080/perf/fib?n=45"   # slowest allowed value
-
-# Prime sieve — adjust limit
-curl -s "http://localhost:8080/perf/primes?limit=1000000"
-curl -s "http://localhost:8080/perf/primes?limit=5000000"
-
-# Health endpoints
-curl -s http://localhost:8080/q/health
-curl -s http://localhost:8080/q/health/live
-curl -s http://localhost:8080/q/health/ready
-
-# Prometheus metrics (grep for demo-specific ones)
-curl -s http://localhost:8080/q/metrics | grep demo_benchmark
-curl -s http://localhost:8080/q/metrics | grep jvm_memory
-```
-
----
-
-## 🏗️ New Extensions Added
-
-| Extension | Purpose |
-|---|---|
-| `quarkus-rest-jackson` | JSON serialisation for performance endpoints |
-| `quarkus-smallrye-health` | `/q/health` liveness + readiness checks |
-| `quarkus-micrometer-registry-prometheus` | `/q/metrics` Prometheus scrape + JVM gauges |
-
----
-
-## 📦 Packaging
-
-### JVM JAR
-
-```shell
-./mvnw package
-java -jar target/quarkus-app/quarkus-run.jar
-```
-
-### Über-JAR
-
-```shell
-./mvnw package -Dquarkus.package.jar.type=uber-jar
-java -jar target/*-runner.jar
-```
-
-### Native Image
-
-```shell
-./mvnw package -Dnative
-./target/high-perf-kube-java-1.0.0-SNAPSHOT-runner
-```
-
-### Container Image (Jib)
-
-Uncomment the `quarkus.container-image.*` lines in
-[`src/main/resources/application.properties`](src/main/resources/application.properties), then:
-
-```shell
-./mvnw package -Dquarkus.container-image.build=true
-```
-
----
-
-## 🧪 Tests
-
-```shell
-./mvnw test            # unit + integration tests (12 tests)
-./mvnw test -Dnative   # native integration tests
-```
-
-Test classes:
-
-| Class | Coverage |
-|---|---|
-| [`GreetingResourceTest`](src/test/java/org/acme/GreetingResourceTest.java) | `/hello`, `/hello/perf`, `/hello/runtime` |
-| [`PerformanceResourceTest`](src/test/java/org/acme/PerformanceResourceTest.java) | `/perf/info`, `/perf/fib`, `/perf/primes` |
-| [`HealthCheckTest`](src/test/java/org/acme/HealthCheckTest.java) | `/q/health`, `/q/health/live`, `/q/health/ready` |
-
----
-
-## Related Guides
-
-- [Quarkus REST](https://quarkus.io/guides/rest)
+# Runtime Lab: JVM versus Native Image
+
+A presentation-ready SPA served by the existing Quarkus application. The guided
+story is **Start → Load → Switch runtime → Compare → Kubernetes readiness**.
+Java 25 · Quarkus 3.40.1.1 · all assets bundled locally.
+
+Open http://localhost:8080. Read [DEMO.md](DEMO.md) for preparation commands,
+a 5–7 minute presenter script, packaged JVM/native execution, build-cost recording,
+optional Kubernetes observations and curl fallback.
+
+## Presenter features
+
+- High-contrast light/dark themes, fullscreen and 1080p projector layout.
+- Runtime identity, live connection state, bounded reconnect requests with backoff.
+- Versioned browser-local sessions, named comparisons, settings, snapshots and
+  complete JSON export/import. Saved observations are separate from live metrics.
+- Deliberate fib(40) calls using `duration_ns`; first sample separate from repeated
+  count, median, min and max. No benchmark requests on connect, poll or navigation.
+- Process identities on info and benchmark responses prevent results mixing after
+  runtime changes or same-runtime restarts. Partial failures retain successful calls.
+- Comparisons check input and output agreement; server and browser durations have
+  separate boundaries. Unknown/different resource settings are visible.
+- Build time, peak build memory, artifact bytes and image bytes are recorded
+  separately with measurement source and timestamp, or remain “not collected.”
+- Optional imported Kubernetes observations; no cluster or shell access in the SPA.
+
+Sessions use localStorage key `runtime-lab.session.v1`. Export before clearing
+browser data or changing origin. Invalid/unsupported JSON imports are rejected.
+Session details contain individual samples, baseline snapshots, definitions and raw
+JSON. Run settings lock after sampling to preserve the recorded conditions.
+
+## Existing endpoints (preserved)
+
+- `/hello`, `/hello/perf`, `/hello/runtime`: greeting and runtime text.
+- `/perf/info`: runtime, Java/VM identity, uptime, heap/non-heap and processors.
+  Includes `process_id` and `process_start_epoch_ms` for process identification.
+- `/perf/fib?n=40`: naive recursive Fibonacci (1–45; invalid input defaults to 40).
+- `/perf/primes?limit=1000000`: sieve (100–10,000,000; invalid input defaults to
+  1,000,000). Retained as a secondary curl demo.
+- Both benchmarks preserve results, `duration_ms` and `duration_ns` and add
+  `process_id`. Algorithms and timing boundaries are unchanged.
+- `/q/health`, `/q/health/live`, `/q/health/ready`: SmallRye Health.
+- `/q/metrics`: Prometheus. `/q/dev/`: development-only Dev UI.
+
+Historical `_mb` field names remain API-compatible, but divide by 1,048,576 and
+are labeled **MiB** in the SPA. Undefined memory maxima are JSON null.
+`startup_time_ms` remains API-compatible and means **Uptime at StartupEvent**,
+not Kubernetes readiness or end-to-end startup. Browser connection time is never
+used to infer startup. Heap, RSS, container usage and image size are distinct.
+A Ready pod does not prove a throughput or latency SLO. Few sequential calls do
+not establish steady state, sustained throughput or p99.
+
+## Development and tests
+
+Use Quarkus MCP `quarkus_start` for development and `quarkus_callTool` with
+`devui-testing_runTests` for backend tests, following [AGENTS.md](AGENTS.md).
+`npm ci && npm test` runs focused dependency-free session logic tests;
+`npm run test:browser` checks the live SPA and test-only failure scenarios after
+installing Playwright Chromium. See DEMO.md for details. Development mode is for
+verification only; the comparison uses packaged artifacts preserved in separate
+`demo-artifacts/jvm/` and `demo-artifacts/native/` directories.
+
+## Extensions and guides
+
+Existing extensions are retained; no frontend migration or additional runtime
+dependency is required:
+
+- [Quarkus REST / Jackson](https://quarkus.io/guides/rest)
 - [SmallRye Health](https://quarkus.io/guides/smallrye-health)
-- [Micrometer Metrics](https://quarkus.io/guides/micrometer)
-- [Building a Native Executable](https://quarkus.io/guides/building-native-image)
-- [Container Images with Jib](https://quarkus.io/guides/container-image#jib)
+- [Micrometer / Prometheus](https://quarkus.io/guides/micrometer)
+- [Container Image Jib](https://quarkus.io/guides/container-image#jib)
+- [Native executable builds](https://quarkus.io/guides/building-native-image)
+
+Logical follow-up: rehearse the packaged pair on the presentation machine, then
+collect external Kubernetes readiness and controlled load-test evidence if needed.

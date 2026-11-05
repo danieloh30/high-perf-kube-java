@@ -1,0 +1,11 @@
+{
+  "name": "runtime-lab-verification",
+  "private": true,
+  "scripts": {
+    "test": "node --test tests/session.test.mjs",
+    "test:browser": "node tests/browser.mjs"
+  },
+  "devDependencies": {
+    "playwright": "1.58.2"
+  }
+}

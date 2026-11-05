@@ -33,6 +33,10 @@ public class PerformanceResource {
     @Inject
     MeterRegistry registry;
 
+    @Inject
+    @org.eclipse.microprofile.health.Readiness
+    AppReadinessCheck process;
+
     // ---------------------------------------------------------------
     // JVM / runtime stats
     // ---------------------------------------------------------------
@@ -49,6 +53,8 @@ public class PerformanceResource {
 
         Map<String, Object> info = new HashMap<>();
         info.put("runtime_type", isNative ? "native-image" : "jvm");
+        info.put("process_id", process.processId());
+        info.put("process_start_epoch_ms", runtime.getStartTime());
         info.put("java_version", System.getProperty("java.version", "unknown"));
         info.put("vm_name", System.getProperty("java.vm.name", "unknown"));
         info.put("vm_vendor", System.getProperty("java.vm.vendor", "unknown"));
@@ -88,6 +94,7 @@ public class PerformanceResource {
         res.put("result", fibResult);
         res.put("duration_ms", TimeUnit.NANOSECONDS.toMillis(durationNs));
         res.put("duration_ns", durationNs);
+        res.put("process_id", process.processId());
         return res;
     }
 
@@ -124,6 +131,7 @@ public class PerformanceResource {
         res.put("largest_prime", primeList.isEmpty() ? 0 : primeList.getLast());
         res.put("duration_ms", TimeUnit.NANOSECONDS.toMillis(durationNs));
         res.put("duration_ns", durationNs);
+        res.put("process_id", process.processId());
         return res;
     }
 
@@ -150,7 +158,8 @@ public class PerformanceResource {
         return primes;
     }
 
-    private static double toMb(long bytes) {
+    private static Double toMb(long bytes) {
+        if (bytes < 0) return null;
         return Math.round((bytes / 1_048_576.0) * 100.0) / 100.0;
     }
 

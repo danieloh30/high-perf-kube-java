@@ -21,11 +21,29 @@ class PerformanceResourceTest {
             .then()
             .statusCode(200)
             .contentType("application/json")
-            .body("runtime_type",          notNullValue())
+            .body("runtime_type",          isOneOf("jvm", "native-image"))
+            .body("process_id", not(emptyString()))
+            .body("process_start_epoch_ms", greaterThan(0L))
             .body("java_version",          notNullValue())
             .body("uptime_ms",             greaterThanOrEqualTo(0))
             .body("heap_used_mb",          greaterThan(0.0f))
             .body("available_processors",  greaterThanOrEqualTo(1));
+    }
+
+    @Test
+    void processIdentityMatchesAcrossEndpoints() {
+        String id = given().get("/perf/info").then().statusCode(200)
+                .extract().path("process_id");
+        given().get("/perf/info").then().body("process_id", is(id));
+        given().queryParam("n", 10).get("/perf/fib").then().body("process_id", is(id));
+        given().queryParam("limit", 100).get("/perf/primes").then().body("process_id", is(id));
+    }
+
+    @Test
+    void presenterAssetsAreServedLocally() {
+        given().get("/").then().statusCode(200).body(containsString("presenter.mjs"));
+        given().get("/session.mjs").then().statusCode(200).body(containsString("runtime-lab.session.v1"));
+        given().get("/presenter.css").then().statusCode(200).body(containsString("data-theme=\"light\""));
     }
 
     // ── /perf/fib ─────────────────────────────────────────────────────────────
@@ -38,7 +56,9 @@ class PerformanceResourceTest {
             .statusCode(200)
             .body("input_n",     is(40))
             .body("result",      is(102334155))      // fib(40) = 102334155 (JSON int)
-            .body("duration_ms", greaterThanOrEqualTo(0));
+            .body("duration_ms", greaterThanOrEqualTo(0))
+            .body("duration_ns.toLong()", greaterThan(0L))
+            .body("process_id", not(emptyString()));
     }
 
     @Test

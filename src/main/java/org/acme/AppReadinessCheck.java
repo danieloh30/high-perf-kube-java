@@ -9,18 +9,18 @@ import org.eclipse.microprofile.health.Readiness;
 
 import java.lang.management.ManagementFactory;
 
-/**
- * Readiness check that records the actual application startup time.
- * In the demo this makes the JVM vs Native Image startup gap visible
- * directly from the Kubernetes health endpoint.
- */
+/** Records process uptime at StartupEvent, not Kubernetes or end-to-end readiness. */
 @Readiness
 @ApplicationScoped
 public class AppReadinessCheck implements HealthCheck {
 
     private volatile long startupMs = -1;
+    private volatile String processId;
+
+    public String processId() { return processId; }
 
     void onStart(@Observes StartupEvent event) {
+        processId = java.util.UUID.randomUUID().toString();
         startupMs = ManagementFactory.getRuntimeMXBean().getUptime();
     }
 

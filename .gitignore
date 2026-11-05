@@ -177,3 +177,7 @@ fabric.properties
 .classpath
 
 .idea
+# Presenter verification and prebuilt artifacts
+node_modules/
+demo-artifacts/
+test-results/
