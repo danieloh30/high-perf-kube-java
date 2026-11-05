@@ -4,6 +4,19 @@ A presentation-ready SPA served by the existing Quarkus application. The guided
 story is **Start → Load → Switch runtime → Compare → Kubernetes readiness**.
 Java 25 · Quarkus 3.40.1.1 · all assets bundled locally.
 
+Start the complete local workflow from this checkout:
+
+```sh
+./demo.sh up       # prepare both artifacts if needed, then start packaged JVM
+./demo.sh switch   # switch to the other prepared runtime on the same port
+./demo.sh down     # stop the script-owned process
+```
+
+Requires macOS/Linux, Python 3.9+, and GraalVM JDK 25 with native-image.
+Use `./demo.sh prepare` before the talk, and `./demo.sh costs` for measured build
+costs. Artifacts are preserved in separate timestamped bundles and reused until
+application sources change. `status` and `logs` provide launch details.
+
 Open http://localhost:8080. Read [DEMO.md](DEMO.md) for preparation commands,
 a 5–7 minute presenter script, packaged JVM/native execution, build-cost recording,
 optional Kubernetes observations and curl fallback.
@@ -58,7 +71,9 @@ Use Quarkus MCP `quarkus_start` for development and `quarkus_callTool` with
 `npm run test:browser` checks the live SPA and test-only failure scenarios after
 installing Playwright Chromium. See DEMO.md for details. Development mode is for
 verification only; the comparison uses packaged artifacts preserved in separate
-`demo-artifacts/jvm/` and `demo-artifacts/native/` directories.
+`demo-artifacts/builds/<bundle>/jvm/` and `native/` directories.
+Run terminal orchestration tests with
+`python3 -m unittest discover -s tests -p test_demo.py` (isolated test fixtures).
 
 ## Extensions and guides
 

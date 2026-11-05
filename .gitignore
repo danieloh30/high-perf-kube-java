@@ -181,3 +181,6 @@ fabric.properties
 node_modules/
 demo-artifacts/
 test-results/
+
+# Python terminal tooling
+__pycache__/
