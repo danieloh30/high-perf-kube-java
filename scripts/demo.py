@@ -379,6 +379,7 @@ class Demo:
                     evidence = dict(version=1, process_id=info['process_id'], runtime=runtime,
                                     revision=manifest['revision'], source_hash=manifest['source_hash'],
                                     dirty=manifest['dirty'], collected_at=stamp(), costs=costs,
+                                    reset_generation=read_json(self.home / 'reset-generation.json')['id'] if (self.home / 'reset-generation.json').exists() else 'initial',
                                     environment_mode='host', image_status='not-applicable: no container image built',
                                     settings=dict(cpu=f'ActiveProcessorCount={settings["cpus"]}; no OS quota set by demo.sh',
                                                   heap=f'-Xms{settings["xms"]} -Xmx{settings["xmx"]}',
@@ -470,8 +471,9 @@ class Demo:
                 path.unlink()
             elif path.is_dir():
                 shutil.rmtree(path)
+        write_json(self.home / 'reset-generation.json', dict(id=uuid.uuid4().hex, reset_at=stamp()))
         print('Reset complete: prepared bundles, evidence, logs and target/ removed.')
-        print('Browser sessions are separate: use Reset comparison session in the SPA to clear saved results.')
+        print('The next launch will also clear the connected browser comparison. Export saved results before reset if needed.')
 
     def status(self):
         state = self.process()

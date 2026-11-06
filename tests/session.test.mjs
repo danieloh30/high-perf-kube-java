@@ -244,3 +244,67 @@ test("insights also report JVM wins and equality without promising a universal w
   assert.match(insight(a, b), /equal/);
   assert.equal(compare(a, b, "repeat", "unknown").ratio, null);
 });
+
+test("terminal reset discards old native history while regular runtime switches preserve it", async () => {
+  const { reconcileReset } =
+    await import("../src/main/resources/META-INF/resources/session.mjs");
+  const s = fresh();
+  s.theme = "light";
+  s.backendGeneration = "generation-1";
+  observe(s, info("old-native", "native-image"));
+  const current = {
+    ...info("new-jvm"),
+    demo_evidence: {
+      status: "collected",
+      data: {
+        process_id: "new-jvm",
+        runtime: "jvm",
+        reset_generation: "generation-2",
+      },
+    },
+  };
+  const result = reconcileReset(s, current);
+  assert.equal(result.cleared, true);
+  assert.deepEqual(result.session.runs, []);
+  assert.equal(result.session.theme, "light");
+  observe(result.session, current);
+  assert.equal(result.session.runs.length, 1);
+  assert.equal(result.session.runs[0].runtime, "jvm");
+  const native = {
+    ...info("new-native", "native-image"),
+    demo_evidence: {
+      status: "collected",
+      data: {
+        process_id: "new-native",
+        runtime: "native",
+        reset_generation: "generation-2",
+      },
+    },
+  };
+  const unchanged = reconcileReset(result.session, native);
+  assert.equal(unchanged.cleared, false);
+  observe(unchanged.session, native);
+  assert.equal(unchanged.session.runs.length, 2);
+});
+test("first reset marker clears legacy history, but explicit imports and mismatched evidence do not", async () => {
+  const { reconcileReset } =
+    await import("../src/main/resources/META-INF/resources/session.mjs");
+  const s = fresh();
+  observe(s, info("old-native", "native-image"));
+  const current = {
+    ...info("jvm"),
+    demo_evidence: {
+      status: "collected",
+      data: {
+        process_id: "jvm",
+        runtime: "jvm",
+        reset_generation: "reset-marker",
+      },
+    },
+  };
+  assert.equal(reconcileReset(s, current).cleared, true);
+  assert.equal(reconcileReset(s, current, true).cleared, false);
+  assert.equal(s.runs.length, 1);
+  current.demo_evidence.data.process_id = "foreign";
+  assert.equal(reconcileReset(s, current).cleared, false);
+});

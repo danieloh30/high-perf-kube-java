@@ -208,6 +208,11 @@ class DemoTests(unittest.TestCase):
         self.assertFalse((self.root/'target').exists())
         self.assertFalse(evidence_path.exists())
         self.assertTrue((self.root/'pom.xml').exists())
+        generation=demo.read_json(self.d.home/'reset-generation.json')['id']
+        self.d.up()
+        state=self.d.process()
+        evidence_path=Path(next(x.split('=',1)[1] for x in state['command'] if x.startswith('-Ddemo.evidence.path=')))
+        self.assertEqual(demo.read_json(evidence_path)['reset_generation'],generation)
 
     def test_reset_refuses_unowned_pid_without_deleting_artifacts(self):
         demo.write_json(self.d.state,dict(pid=os.getpid(),token='a'*32))

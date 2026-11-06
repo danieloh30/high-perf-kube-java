@@ -1,5 +1,6 @@
 import {
   fresh,
+  reconcileReset,
   KEY,
   LEGACY_KEY,
   BENCHMARKS,
@@ -17,7 +18,7 @@ import {
   settingsWarnings,
   numeric,
   batch,
-} from "./session.mjs?v=20261106-2";
+} from "./session.mjs?v=20261106-3";
 const $ = (id) => document.getElementById(id);
 let session;
 try {
@@ -35,6 +36,7 @@ let active = null,
   polling = null,
   timer = null,
   backoff = 1000,
+  preserveImportedOnNextPoll = false,
   selected = { jvm: null, "native-image": null };
 const phases = [
   [
@@ -252,7 +254,7 @@ function renderSelectors() {
     }
     select.dataset.signature = signature;
     select.replaceChildren();
-    if (!runs.length) select.append(new Option("Not collected", ""));
+    if (!runs.length) select.append(new Option("Not run in this session", ""));
     for (const r of runs)
       select.append(
         new Option(`${r.id.slice(0, 8)} · ${r.createdAt} · saved`, r.id),
@@ -290,8 +292,8 @@ function renderComparison() {
   $("insight-workload").textContent = BENCHMARKS[benchmark].description;
   grid.append(
     el("div", "MEASUREMENT"),
-    el("div", "JVM", "jvm big"),
-    el("div", "NATIVE IMAGE", "native big"),
+    el("div", a ? "JVM" : "JVM · NOT RUN", "jvm big"),
+    el("div", b ? "NATIVE IMAGE" : "NATIVE IMAGE · NOT RUN", "native big"),
   );
   for (const [kind, field, label] of [
     ["first", "serverNs", "First / server computation"],
@@ -604,6 +606,25 @@ async function poll() {
     try {
       const next = (await request("/perf/info")).data;
       const previous = active?.id;
+      const reset = reconcileReset(session, next, preserveImportedOnNextPoll);
+      preserveImportedOnNextPoll = false;
+      if (reset.cleared) {
+        session = reset.session;
+        active = null;
+        selected = { jvm: null, "native-image": null };
+        localStorage.removeItem(KEY);
+        localStorage.removeItem(LEGACY_KEY);
+        for (const id of ["settings-run", "jvm-run", "native-run"]) {
+          delete $(id).dataset.signature;
+          delete $(id).dataset.loaded;
+          $(id).replaceChildren();
+        }
+        $("session-name").value = session.name;
+        $("revision").value = "";
+        tell(
+          "Terminal reset detected. Previous comparison cleared; save this runtime’s pre-load baseline to begin.",
+        );
+      }
       active = observe(session, next);
       info = next;
       if (
@@ -619,7 +640,7 @@ async function poll() {
       }
       connected = true;
       backoff = 1000;
-      if (previous && previous !== active.id)
+      if (previous && previous !== active.id && !reset.cleared)
         tell(
           `New process detected (${active.runtime}). Previous results preserved. Start → save pre-load baseline → Load.`,
         );
@@ -769,11 +790,13 @@ $("reset-session").onclick = async () => {
   clearTimeout(timer);
   if (polling) await polling;
   clearTimeout(timer);
-  const theme = session.theme;
+  const theme = session.theme,
+    generation = session.backendGeneration;
   localStorage.removeItem(KEY);
   localStorage.removeItem(LEGACY_KEY);
   session = fresh();
   session.theme = theme;
+  if (generation) session.backendGeneration = generation;
   active = null;
   info = null;
   health = null;
@@ -840,6 +863,7 @@ $("import").onchange = async (e) => {
     if (polling) await polling;
     clearTimeout(timer);
     session = next;
+    preserveImportedOnNextPoll = true;
     delete $("settings-run").dataset.loaded;
     delete $("settings-run").dataset.signature;
     active = null;

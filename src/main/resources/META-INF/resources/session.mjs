@@ -85,6 +85,33 @@ export function load(storage) {
   const text = storage.getItem(KEY) || storage.getItem(LEGACY_KEY);
   return text ? decode(text) : fresh();
 }
+export function reconcileReset(session, info, keepImported = false) {
+  const data =
+    info?.demo_evidence?.status === "collected"
+      ? info.demo_evidence.data
+      : null;
+  const generation = data?.reset_generation;
+  if (
+    data?.process_id !== info?.process_id ||
+    data?.runtime !== (info?.runtime_type === "jvm" ? "jvm" : "native") ||
+    typeof generation !== "string" ||
+    !generation
+  )
+    return { session, cleared: false };
+  if (
+    keepImported ||
+    session.backendGeneration === generation ||
+    (!session.backendGeneration &&
+      (generation === "initial" || session.runs.length === 0))
+  ) {
+    session.backendGeneration = generation;
+    return { session, cleared: false };
+  }
+  const next = fresh();
+  next.theme = session.theme;
+  next.backendGeneration = generation;
+  return { session: next, cleared: true };
+}
 export function samplesFor(run, benchmark = "fib") {
   return (run?.samples || []).filter(
     (x) => (x.benchmark || "fib") === benchmark,

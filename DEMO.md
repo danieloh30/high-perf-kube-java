@@ -154,16 +154,34 @@ Export the session from Session setup. **Terminal:** `./demo.sh down`.
 ./demo.sh reset          # stop managed process; DELETE demo-artifacts contents and target/
 ```
 
-`reset` preserves repository sources, the command-lock file and browser storage.
-It refuses to delete artifacts while this checkout's dev mode is running, and
-refuses to kill an unowned PID. Stop dev mode using `quarkus_stop` first. After
+`reset` preserves repository sources and the command-lock file. Export any
+comparison you need before using it: after the next `up`, the dashboard detects
+the terminal reset and automatically clears old JVM/native runs, samples and
+snapshots. It returns to Start with only the currently running process. Normal
+runtime switches and `prepare --force` preserve the comparison.
+
+Reset refuses to delete artifacts while this checkout's dev mode is running and
+refuses to kill an unowned PID. Stop dev mode with `quarkus_stop` first. After
 reset, the next `up` rebuilds both artifacts; do this before the next talk.
 
-For a full clean rehearsal: export the browser session if needed, run
-`./demo.sh reset`, then `./demo.sh prepare` and `./demo.sh up`; in the browser
-click **Reset comparison session**. Terminal reset cannot directly clear your
-browser's localStorage. The browser reset clears both v1 and v2 session keys,
-keeps your theme, and does not restart the process or undo its JIT history.
+For a full clean rehearsal:
+
+```sh
+./demo.sh reset
+./demo.sh prepare
+./demo.sh up
+```
+
+Keep the browser open and wait for reconnection; its old native comparison is
+cleared automatically. While the backend is offline, saved observations can
+remain visible until the new process communicates the reset. A disconnected
+saved Native run does not mean a native process is running.
+
+**Reset comparison session** in the browser is still available for clearing
+results without rebuilding. It keeps your theme and the current process, so a
+currently running native process will reconnect as Native. Use `down` then `up`
+for a fresh JVM process. Explicitly imported sessions are retained until the next
+terminal reset, so you can review a prior exported comparison deliberately.
 
 Defaults for both processes are `-Xms64m -Xmx256m -XX:ActiveProcessorCount=2`,
 port 8080 and loopback HTTP binding. Override before up, with no process running:

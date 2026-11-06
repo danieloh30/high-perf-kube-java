@@ -51,8 +51,9 @@ legacy snapshots labeled as having unknown phase. Export before clearing
 browser data or changing origin. Invalid/unsupported JSON imports are rejected.
 Session details contain individual samples, baseline snapshots, definitions and raw
 JSON. Run settings lock after sampling to preserve the recorded conditions.
-Reset comparison session clears saved browser results; terminal `reset` separately
-clears generated artifacts. Export any results you need to retain first.
+Reset comparison session clears saved browser results without changing the runtime.
+Terminal `reset` clears generated artifacts and clears the old browser comparison
+automatically when the next launched process reconnects. Export any results you need to retain first.
 
 ## Existing endpoints (preserved)
 

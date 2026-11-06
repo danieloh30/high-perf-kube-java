@@ -5,7 +5,8 @@ import { readFile } from "node:fs/promises";
 import { chromium } from "playwright";
 import assert from "node:assert/strict";
 let modern = false,
-  runtime = "jvm";
+  runtime = "jvm",
+  resetGeneration = "initial";
 const assets = new Set([
   "/index.html",
   "/presenter.mjs",
@@ -53,6 +54,14 @@ const server = createServer(async (req, res) => {
           process_id: runtime + "-cache-test",
           vm_name: "TEST ONLY",
           available_processors: 2,
+          demo_evidence: {
+            status: "collected",
+            data: {
+              process_id: runtime + "-cache-test",
+              runtime: runtime === "jvm" ? "jvm" : "native",
+              reset_generation: resetGeneration,
+            },
+          },
         }),
       );
     if (path === "/q/health/ready")
@@ -124,6 +133,25 @@ try {
     await page.locator("#computation-insight").textContent(),
     /Repeated computation comparison/,
   );
+  resetGeneration = "reset-2";
+  runtime = "jvm";
+  await page.waitForFunction(() => {
+    const s = JSON.parse(localStorage.getItem("runtime-lab.session.v2"));
+    return (
+      s.backendGeneration === "reset-2" &&
+      s.runs.length === 1 &&
+      s.runs[0].runtime === "jvm" &&
+      s.runs[0].samples.length === 0
+    );
+  });
+  assert.equal(await page.locator("#native-run").inputValue(), "");
+  assert.equal(
+    await page.locator("#native-run option").textContent(),
+    "Not run in this session",
+  );
+  await page
+    .getByRole("button", { name: "Save pre-load baseline", exact: true })
+    .waitFor();
   assert.deepEqual(errors, []);
   console.log(
     "Warm browser-cache regression passed: new entry + model modules, both post-load buttons, and insight rendering.",
