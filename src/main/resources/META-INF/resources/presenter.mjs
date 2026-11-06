@@ -1,5 +1,13 @@
 import {
   fresh,
+  KEY,
+  LEGACY_KEY,
+  BENCHMARKS,
+  samplesFor,
+  baseline,
+  postload,
+  snapshot as recordSnapshot,
+  insight,
   load,
   save,
   decode,
@@ -33,19 +41,19 @@ const phases = [
     "Start",
     "Know the running process.",
     "Observe runtime identity and memory, then save a labeled baseline.",
-    "Save baseline snapshot",
+    "Save pre-load baseline",
   ],
   [
     "Load",
     "Make the work visible.",
     "Collect the first sample, then five deliberate sequential measurements.",
-    "Save baseline and switch runtime",
+    "Save post-load and switch runtime",
   ],
   [
     "Switch runtime",
     "One port. Two runtimes.",
     "Switch prepared artifacts in the terminal. Your session stays here.",
-    "Go to Load",
+    "Go to Start",
   ],
   [
     "Compare",
@@ -63,7 +71,7 @@ const phases = [
 function persist() {
   try {
     save(localStorage, session);
-    $("storage-status").textContent = "Saved locally · schema v1";
+    $("storage-status").textContent = "Saved locally · schema v2";
   } catch (e) {
     $("storage-status").textContent =
       `Persistence failed: ${e.message}. Export this session now.`;
@@ -127,7 +135,18 @@ function render() {
     `${String(session.phase + 1).padStart(2, "0")} / ${p[0].toUpperCase()}`;
   $("title").textContent = p[1];
   $("subtitle").textContent = p[2];
-  $("primary").textContent = p[3];
+  $("primary").textContent =
+    session.phase === 1 &&
+    session.runs.some((r) => r.runtime !== active?.runtime && r.samples.length)
+      ? "Save post-load and compare"
+      : p[3];
+  if (session.phase === 0 && active?.samples.length && !baseline(active))
+    $("primary").textContent = "Continue (pre-load baseline missed)";
+  $("load-benchmark").value = session.benchmark;
+  $("compare-benchmark").value = session.benchmark;
+  $("load-benchmark").disabled = busy;
+  $("workload-description").textContent =
+    BENCHMARKS[session.benchmark].description;
   $("primary").disabled = busy || (session.phase < 2 && !connected);
   ["start", "load", "switch", "compare", "kubernetes"].forEach(
     (id, i) => ($(id).hidden = session.phase !== i),
@@ -189,8 +208,9 @@ function render() {
       return c;
     }),
   );
-  const first = active?.samples.find((x) => x.kind === "first"),
-    s = stats(active?.samples || []);
+  const workloadSamples = samplesFor(active, session.benchmark);
+  const first = workloadSamples.find((x) => x.kind === "first"),
+    s = stats(workloadSamples);
   $("load-results").replaceChildren(
     el("div", "CURRENT PROCESS / SAVED MEASUREMENTS", "eyebrow"),
     el("h2", first ? ms(first.serverNs) : "First sample not collected"),
@@ -253,17 +273,21 @@ function renderSelectors() {
         (r) => new Option(`${r.runtime} · ${r.id.slice(0, 8)}`, r.id),
       ),
     );
-    select.value = old || active?.id || session.runs.at(-1)?.id || "";
+    select.value = active?.id || old || session.runs.at(-1)?.id || "";
   }
-  if (select.dataset.loaded !== select.value) {
-    select.dataset.loaded = select.value;
+  const signatureFields = select.value + ":" + !!editingRun()?.evidence;
+  if (select.dataset.loaded !== signatureFields) {
+    select.dataset.loaded = signatureFields;
     fillRunFields();
   }
 }
 function renderComparison() {
+  const benchmark = session.benchmark;
   const a = selectedRun("jvm"),
     b = selectedRun("native-image"),
     grid = el("div", "", "compare-grid");
+  $("computation-insight").textContent = insight(a, b, benchmark);
+  $("insight-workload").textContent = BENCHMARKS[benchmark].description;
   grid.append(
     el("div", "MEASUREMENT"),
     el("div", "JVM", "jvm big"),
@@ -275,15 +299,15 @@ function renderComparison() {
     ["first", "httpMs", "First / browser HTTP"],
     ["repeat", "httpMs", "Repeated median / browser HTTP"],
   ]) {
-    const c = compare(a, b, kind, field),
+    const c = compare(a, b, kind, field, benchmark),
       format =
         field === "serverNs"
           ? ms
           : (x) => (numeric(x) ? fmt(x, " ms") : "Not collected");
     const value = (r) =>
       kind === "first"
-        ? r?.samples.find((x) => x.kind === "first")?.[field]
-        : stats(r?.samples || [], field).median;
+        ? samplesFor(r, benchmark).find((x) => x.kind === "first")?.[field]
+        : stats(samplesFor(r, benchmark), field).median;
     const heading = el("div", label);
     heading.append(
       el("p", c.ratio ? `${c.ratio.toFixed(2)}× JVM ÷ Native Image` : c.reason),
@@ -307,29 +331,114 @@ function renderComparison() {
     el("summary", "Baseline memory & recorded build costs"),
     extraGrid,
   );
+  const observationLabel = el("label", "Memory snapshot phase"),
+    observationSelect = document.createElement("select");
+  observationSelect.id = "observation-phase";
+  for (const [value, label] of [
+    ["pre-load", "Pre-load baseline"],
+    ["post-load", "Post-load snapshot"],
+  ])
+    observationSelect.append(new Option(label, value));
+  observationSelect.value = session.observationPhase || "pre-load";
+  observationSelect.onchange = () => {
+    session.observationPhase = observationSelect.value;
+    persist();
+    renderComparison();
+  };
+  observationLabel.append(observationSelect);
+  extra.insertBefore(observationLabel, extraGrid);
+  const saved = (r) =>
+    (session.observationPhase || "pre-load") === "pre-load"
+      ? baseline(r)
+      : postload(r);
+  const missing =
+    "Snapshot not saved for this phase; return to Start before Load for a pre-load baseline.";
   for (const [key, label] of [
-    ["heap_used_mb", "Baseline heap / MiB"],
-    ["non_heap_used_mb", "Baseline non-heap / MiB"],
+    ["heap_used_mb", "Heap used / MiB"],
+    ["non_heap_used_mb", "Non-heap used / MiB"],
   ]) {
     extraGrid.append(
       el("div", label),
       ...[a, b].map((r) => {
-        const snapshot = r?.snapshots.at(-1),
-          d = el("div", fmt(snapshot?.info?.[key]));
-        if (snapshot) d.append(el("p", `Saved snapshot · ${snapshot.at}`));
+        const snapshot = saved(r),
+          d = el(
+            "div",
+            snapshot ? fmt(snapshot.info?.[key]) : "Snapshot not saved",
+          );
+        d.append(
+          el("p", snapshot ? `${snapshot.label} · ${snapshot.at}` : missing),
+        );
         return d;
       }),
     );
   }
-  for (const label of ["Process RSS", "Container memory usage"])
+  for (const [key, label] of [
+    ["process_rss", "Process RSS / MiB"],
+    ["container_memory", "Container cgroup usage / MiB"],
+  ]) {
     extraGrid.append(
       el("div", label),
-      el("div", "Not collected"),
-      el("div", "Not collected"),
+      ...[a, b].map((r) => {
+        const snapshot = saved(r),
+          measurement = snapshot?.info?.[key];
+        const hostContainer =
+          key === "container_memory" &&
+          measurement?.status === "not-applicable";
+        const value = hostContainer
+          ? "Not applicable · host process"
+          : !snapshot
+            ? "Snapshot not saved"
+            : measurement?.status === "collected"
+              ? fmt(measurement.value_mib)
+              : measurement?.status === "not-applicable"
+                ? "Not applicable"
+                : "Not collected";
+        const d = el("div", value);
+        d.append(
+          el(
+            "p",
+            measurement?.source
+              ? `${measurement.source} · ${measurement.timestamp}`
+              : measurement?.reason ||
+                  (!snapshot ? missing : "No OS observation was collected."),
+          ),
+        );
+        return d;
+      }),
     );
+  }
+  extraGrid.append(
+    el("div", "Terminal launch → observed readiness / ms"),
+    ...[a, b].map((r) => {
+      const launch = r?.evidence?.launch,
+        d = el(
+          "div",
+          numeric(launch?.duration_ms)
+            ? fmt(launch.duration_ms)
+            : "Not collected · start with demo.sh",
+        );
+      if (launch)
+        d.append(
+          el(
+            "p",
+            `${launch.source} · ${launch.timestamp}. Poll interval ${launch.polling_interval_ms} ms. Not Kubernetes readiness.`,
+          ),
+        );
+      return d;
+    }),
+  );
+  extraGrid.append(
+    el("div", "Uptime at StartupEvent / ms"),
+    ...[a, b].map((r) => {
+      const value = saved(r)?.readiness?.checks?.find(
+        (x) => x.name === "app-readiness",
+      )?.data?.startup_time_ms;
+      return el("div", fmt(value));
+    }),
+  );
   for (const [key, label] of [
     ["build_seconds", "Build time / seconds"],
-    ["peak_build_mib", "Peak build memory / MiB"],
+    ["peak_build_mib", "Peak build process RSS / MiB"],
     ["artifact_bytes", "Artifact / bytes"],
     ["image_bytes", "Container image / bytes"],
   ]) {
@@ -338,7 +447,11 @@ function renderComparison() {
       ...[a, b].map((r) => {
         const d = el(
           "div",
-          numeric(r?.costs?.[key]) ? fmt(r.costs[key]) : "Not collected",
+          numeric(r?.costs?.[key])
+            ? fmt(r.costs[key])
+            : key === "image_bytes" && r?.evidence?.environment_mode === "host"
+              ? "Not applicable · no container image built"
+              : "Not collected",
         );
         if (numeric(r?.costs?.[key]))
           d.append(el("p", `${r.costs.source} · ${r.costs.timestamp}`));
@@ -493,11 +606,22 @@ async function poll() {
       const previous = active?.id;
       active = observe(session, next);
       info = next;
+      if (
+        session.phase === 2 &&
+        session.switchFrom &&
+        active.id !== session.switchFrom
+      ) {
+        session.phase = 0;
+        session.benchmark = "fib";
+        tell(
+          "Other process connected. Save its pre-load baseline now, then run the same samples.",
+        );
+      }
       connected = true;
       backoff = 1000;
       if (previous && previous !== active.id)
         tell(
-          `New process detected (${active.runtime}). Previous measurements preserved separately.`,
+          `New process detected (${active.runtime}). Previous results preserved. Start → save pre-load baseline → Load.`,
         );
       try {
         health = (await request("/q/health/ready", 4000, true)).data;
@@ -532,11 +656,12 @@ async function run(count) {
     const report = await batch(
       run,
       count,
-      () => request("/perf/fib?n=40", 30000),
+      () => request(BENCHMARKS[session.benchmark].url, 30000),
       () => {
         persist();
         render();
       },
+      session.benchmark,
     );
     persist();
     $("batch-status").textContent =
@@ -555,34 +680,118 @@ async function run(count) {
 }
 $("first").onclick = () => run(1);
 $("more").onclick = () => run(5);
-function snapshot() {
-  if (!connected || !active || !info) return false;
-  active.snapshots.push({
-    label: "Presenter baseline snapshot",
-    at: new Date().toISOString(),
-    info: structuredClone(info),
-    readiness: structuredClone(health),
-  });
-  persist();
-  return true;
+async function captureSnapshot(kind) {
+  if (busy || !connected || !active) return false;
+  busy = true;
+  clearTimeout(timer);
+  render();
+  try {
+    if (polling) await polling;
+    clearTimeout(timer);
+    const next = (await request("/perf/info")).data;
+    if (next.process_id !== active.id)
+      throw Error("Process changed. Wait for reconnection before saving.");
+    info = next;
+    active = observe(session, next);
+    try {
+      health = (await request("/q/health/ready", 4000, true)).data;
+    } catch {
+      health = null;
+    }
+    const healthProcess = health?.checks?.find(
+      (x) => x.name === "app-readiness",
+    )?.data?.process_id;
+    if (healthProcess && healthProcess !== next.process_id)
+      throw Error(
+        "Process changed while collecting readiness. Wait for reconnection.",
+      );
+    recordSnapshot(active, info, health, kind);
+    persist();
+    return true;
+  } catch (e) {
+    tell(e.message);
+    return false;
+  } finally {
+    busy = false;
+    render();
+    timer = setTimeout(poll, 1000);
+  }
 }
-$("primary").onclick = () => {
+$("primary").onclick = async () => {
   if (session.phase === 0) {
-    if (snapshot()) {
-      tell("Baseline snapshot saved; choose Load when ready.");
+    if (active?.samples.length && !baseline(active)) {
+      tell(
+        "Pre-load baseline was missed for this process. Existing results remain; restart the runtime for a fresh baseline.",
+      );
+      session.phase = 1;
+    } else if (await captureSnapshot("pre-load")) {
+      tell("Pre-load baseline saved. Click Run first sample, then Run 5 more.");
       session.phase = 1;
     }
   } else if (session.phase === 1) {
-    if (snapshot()) {
-      session.switchFrom = active.id;
-      session.phase = 2;
-      tell("Baseline saved. Switch runtimes in the terminal.");
+    if (await captureSnapshot("post-load")) {
+      if (
+        session.runs.some(
+          (r) => r.runtime !== active.runtime && r.samples.length,
+        )
+      ) {
+        session.phase = 3;
+        tell(
+          "Post-load snapshot saved. Compare the same workload and review the insights.",
+        );
+      } else {
+        session.switchFrom = active.id;
+        session.phase = 2;
+        tell("Post-load snapshot saved. In the terminal run ./demo.sh switch.");
+      }
     }
-  } else if (session.phase === 2) session.phase = 1;
+  } else if (session.phase === 2) session.phase = 0;
   else if (session.phase === 3) session.phase = 4;
   else exportSession();
   persist();
   render();
+};
+for (const id of ["load-benchmark", "compare-benchmark"])
+  $(id).onchange = () => {
+    if (busy) return;
+    session.benchmark = $(id).value;
+    persist();
+    render();
+  };
+$("reset-session").onclick = async () => {
+  if (busy) return tell("Wait for the current action to finish.");
+  if (
+    !window.confirm(
+      "Clear all browser-saved comparison results and snapshots? Export first if you need them. Build artifacts are cleared separately with ./demo.sh reset.",
+    )
+  )
+    return;
+  clearTimeout(timer);
+  if (polling) await polling;
+  clearTimeout(timer);
+  const theme = session.theme;
+  localStorage.removeItem(KEY);
+  localStorage.removeItem(LEGACY_KEY);
+  session = fresh();
+  session.theme = theme;
+  active = null;
+  info = null;
+  health = null;
+  connected = false;
+  selected = { jvm: null, "native-image": null };
+  for (const id of ["settings-run", "jvm-run", "native-run"]) {
+    delete $(id).dataset.signature;
+    delete $(id).dataset.loaded;
+    $(id).replaceChildren();
+  }
+  $("session-name").value = session.name;
+  $("revision").value = "";
+  persist();
+  render();
+  tell(
+    "New comparison session. For a fresh process, use ./demo.sh down then ./demo.sh up.",
+  );
+  poll();
 };
 $("theme").onclick = () => {
   session.theme = session.theme === "dark" ? "light" : "dark";

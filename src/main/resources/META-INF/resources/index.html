@@ -41,7 +41,15 @@
         <div class="split">
           <article class="card">
             <div class="eyebrow">DELIBERATE, SEQUENTIAL COMPUTATION</div>
-            <h2>Fibonacci <span class="muted">/</span> 40</h2>
+            <label
+              >Workload<select id="load-benchmark">
+                <option value="fib">Fibonacci / 40</option>
+                <option value="primes">
+                  Prime sieve / 1,000,000 (optional)
+                </option>
+              </select></label
+            >
+            <p id="workload-description"></p>
             <p>
               Same recursive algorithm. Same input. No automatic benchmark
               requests.
@@ -56,19 +64,20 @@
         </div>
         <p class="footnote">
           “First” means first sample in this session for this process. Other
-          clients may already have called the benchmark. Five sequential calls
-          do not establish steady-state performance, sustained throughput, or
-          p99 latency.
+          clients may already have called the benchmark. First is tracked
+          separately for each workload. Five sequential calls do not establish
+          steady-state performance, sustained throughput, or p99 latency.
         </p>
       </section>
       <section id="switch" class="phase" hidden>
         <div class="card">
           <h2>Keep this page open.</h2>
           <ol>
-            <li>Stop the running process in your terminal.</li>
-            <li>Start the other prepared artifact on the same port.</li>
+            <li>In the terminal, run <code>./demo.sh switch</code>.</li>
+            <li>Keep this browser tab open while the process changes.</li>
             <li>
-              Wait for reconnection, then select Load and collect its samples.
+              After reconnection, save the new runtime’s pre-load baseline in
+              Start, then collect its samples in Load.
             </li>
           </ol>
           <p id="switch-state"></p>
@@ -83,6 +92,38 @@
           <label>JVM run<select id="jvm-run"></select></label
           ><label>Native Image run<select id="native-run"></select></label>
         </div>
+        <label class="compare-workload"
+          >Compare workload<select id="compare-benchmark">
+            <option value="fib">Fibonacci / 40</option>
+            <option value="primes">Prime sieve / 1,000,000</option>
+          </select></label
+        >
+        <article id="insights" class="insights">
+          <b>What these computation results mean</b>
+          <p id="computation-insight"></p>
+          <details>
+            <summary>
+              Computation, startup and memory are different measurements
+            </summary>
+            <p>
+              Native Image compiles ahead of time and often reduces startup work
+              and runtime memory. The JVM can optimize hot code with its JIT
+              compiler and can match or exceed native computation speed. Neither
+              must win this workload. First samples are after startup; a few
+              sequential calls do not establish steady state, sustained
+              throughput, p99 or an SLO. Browser HTTP includes network, queueing
+              and serialization; server duration measures only the algorithm.
+              RSS includes more than heap; artifact bytes are not image bytes.
+            </p>
+            <p id="insight-workload"></p>
+            <a
+              href="https://quarkus.io/guides/building-native-image"
+              target="_blank"
+              rel="noopener"
+              >Quarkus native-image tradeoffs</a
+            >
+          </details>
+        </article>
         <div id="comparison"></div>
         <div class="callout" id="warnings"></div>
       </section>
@@ -121,7 +162,8 @@
                 placeholder="git rev-parse HEAD"
             /></label>
             <div class="actions">
-              <button id="export">Export complete session</button
+              <button id="reset-session">Reset comparison session</button
+              ><button id="export">Export complete session</button
               ><label class="file-button"
                 >Import session<input
                   id="import"
@@ -138,8 +180,9 @@
           <article>
             <h2>Build costs & Kubernetes observations</h2>
             <p>
-              Attach externally measured values to the selected run. Empty means
-              not collected. Include source and timestamp.
+              Build costs and settings attach automatically when launched by
+              demo.sh. Manual entries remain available for externally collected
+              evidence. Empty means not collected. Include source and timestamp.
             </p>
             <div id="cost-fields"></div>
             <button id="save-costs">Save build costs</button>

@@ -120,3 +120,127 @@ test("invalid imports are rejected without coercion", () => {
   s.phase = 90;
   assert.throws(() => decode(JSON.stringify(s)));
 });
+
+test("pre-load is preserved, post-load stays separate, and missed baselines cannot be invented", async () => {
+  const { snapshot, baseline, postload } =
+    await import("../src/main/resources/META-INF/resources/session.mjs");
+  const r = observe(fresh(), info("a"));
+  const before = snapshot(
+    r,
+    { ...info("a"), heap_used_mb: 10 },
+    null,
+    "pre-load",
+  );
+  await batch(r, 1, async () => response("a"));
+  snapshot(r, { ...info("a"), heap_used_mb: 20 }, null, "post-load");
+  assert.equal(baseline(r), before);
+  assert.equal(baseline(r).info.heap_used_mb, 10);
+  assert.equal(postload(r).info.heap_used_mb, 20);
+  const missing = observe(fresh(), info("b"));
+  await batch(missing, 1, async () => response("b"));
+  assert.throws(() => snapshot(missing, info("b"), null, "pre-load"), /missed/);
+});
+test("v1 sessions migrate without pretending legacy snapshots are pre-load", async () => {
+  const { baseline } =
+    await import("../src/main/resources/META-INF/resources/session.mjs");
+  const s = fresh(),
+    r = observe(s, info("a"));
+  s.version = 1;
+  r.snapshots.push({
+    label: "Presenter baseline snapshot",
+    info: { heap_used_mb: 10 },
+  });
+  const restored = decode(JSON.stringify(s));
+  assert.equal(restored.version, 2);
+  assert.equal(restored.runs[0].snapshots[0].kind, "legacy");
+  assert.equal(baseline(restored.runs[0]), undefined);
+});
+test("process-matched evidence attaches costs and settings; foreign evidence excluded", () => {
+  const s = fresh(),
+    evidence = {
+      status: "collected",
+      data: {
+        process_id: "a",
+        runtime: "jvm",
+        revision: "abc",
+        costs: { build_seconds: 12 },
+        settings: { cpu: "2" },
+        launch: { duration_ms: 456 },
+      },
+    };
+  const r = observe(s, { ...info("a"), demo_evidence: evidence });
+  assert.equal(r.costs.build_seconds, 12);
+  assert.equal(r.settings.cpu, "2");
+  assert.equal(r.evidence.launch.duration_ms, 456);
+  const b = observe(s, { ...info("b"), demo_evidence: evidence });
+  assert.equal(b.evidence, undefined);
+  assert.deepEqual(b.costs, {});
+});
+test("prime results and summaries remain separate from Fibonacci and validate both outputs", async () => {
+  const { samplesFor, insight } =
+    await import("../src/main/resources/META-INF/resources/session.mjs");
+  const s = fresh(),
+    a = observe(s, info("a")),
+    b = observe(s, info("b", "native-image"));
+  const prime = (id, ns) => ({
+    data: {
+      process_id: id,
+      limit: 1000000,
+      prime_count: 78498,
+      largest_prime: 999983,
+      duration_ns: ns,
+    },
+    httpMs: 3,
+  });
+  await batch(a, 1, async () => response("a"));
+  await batch(
+    a,
+    1,
+    async () => prime("a", 200),
+    () => {},
+    "primes",
+  );
+  await batch(
+    a,
+    5,
+    async () => prime("a", 200),
+    () => {},
+    "primes",
+  );
+  await batch(
+    b,
+    1,
+    async () => prime("b", 100),
+    () => {},
+    "primes",
+  );
+  await batch(
+    b,
+    5,
+    async () => prime("b", 100),
+    () => {},
+    "primes",
+  );
+  assert.equal(samplesFor(a).length, 1);
+  assert.equal(stats(samplesFor(a, "primes")).count, 5);
+  assert.equal(compare(a, b, "repeat", "serverNs", "primes").ratio, 2);
+  assert.match(insight(a, b, "primes"), /50.0% less/);
+  b.samples[1].largestPrime = 123;
+  assert.equal(compare(a, b, "repeat", "serverNs", "primes").ratio, null);
+});
+
+test("insights also report JVM wins and equality without promising a universal winner", async () => {
+  const { insight } =
+    await import("../src/main/resources/META-INF/resources/session.mjs");
+  const s = fresh(),
+    a = observe(s, info("a")),
+    b = observe(s, info("b", "native-image"));
+  await batch(a, 1, async () => response("a", 42, 100));
+  await batch(a, 5, async () => response("a", 42, 100));
+  await batch(b, 1, async () => response("b", 42, 200));
+  await batch(b, 5, async () => response("b", 42, 200));
+  assert.match(insight(a, b), /JVM took 50.0% less/);
+  for (const x of b.samples) x.serverNs = 100;
+  assert.match(insight(a, b), /equal/);
+  assert.equal(compare(a, b, "repeat", "unknown").ratio, null);
+});

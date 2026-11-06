@@ -29,6 +29,7 @@ public class AppReadinessCheck implements HealthCheck {
         return HealthCheckResponse
                 .named("app-readiness")
                 .up()
+                .withData("process_id", processId)
                 .withData("startup_time_ms", startupMs)
                 .withData("startup_human", startupMs < 0 ? "initialising" : startupMs + " ms")
                 .build();

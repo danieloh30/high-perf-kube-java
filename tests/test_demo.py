@@ -192,6 +192,40 @@ class DemoTests(unittest.TestCase):
             with self.assertRaisesRegex(demo.DemoError,'Another demo command'):
                 with self.d.lock():pass
 
+    def test_launcher_attaches_process_matched_evidence_and_reset_removes_generated_files(self):
+        self.d.up()
+        state=self.d.process()
+        evidence_path=Path(next(x.split('=',1)[1] for x in state['command'] if x.startswith('-Ddemo.evidence.path=')))
+        evidence=demo.read_json(evidence_path)
+        self.assertEqual(evidence['process_id'],state['process_id'])
+        self.assertEqual(evidence['runtime'],'jvm')
+        self.assertGreater(evidence['launch']['duration_ms'],0)
+        self.assertGreater(evidence['costs']['artifact_bytes'],0)
+        self.assertEqual(evidence['settings']['heap'],'-Xms64m -Xmx256m')
+        self.d.reset()
+        self.assertFalse(self.d.current.exists())
+        self.assertFalse(self.d.state.exists())
+        self.assertFalse((self.root/'target').exists())
+        self.assertFalse(evidence_path.exists())
+        self.assertTrue((self.root/'pom.xml').exists())
+
+    def test_reset_refuses_unowned_pid_without_deleting_artifacts(self):
+        demo.write_json(self.d.state,dict(pid=os.getpid(),token='a'*32))
+        marker=self.d.home/'must-remain';marker.write_text('evidence')
+        with self.assertRaisesRegex(demo.DemoError,'refusing to signal'):
+            self.d.reset()
+        self.assertTrue(marker.exists())
+        self.d.state.unlink()
+
+    def test_symlinked_artifact_root_is_refused(self):
+        another=self.root/'another';another.mkdir()
+        outside=self.root/'retained';outside.mkdir()
+        marker=outside/'keep';marker.write_text('keep')
+        (another/'demo-artifacts').symlink_to(outside,target_is_directory=True)
+        with self.assertRaisesRegex(demo.DemoError,'symlinked'):
+            demo.Demo(another)
+        self.assertEqual(marker.read_text(),'keep')
+
     def test_peak_memory_platform_units_and_unknown(self):
         self.assertEqual(demo.peak_mib('1048576  maximum resident set size','Darwin'),1)
         self.assertEqual(demo.peak_mib('Maximum resident set size (kbytes): 2048','Linux'),2)

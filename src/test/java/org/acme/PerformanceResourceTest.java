@@ -27,7 +27,10 @@ class PerformanceResourceTest {
             .body("java_version",          notNullValue())
             .body("uptime_ms",             greaterThanOrEqualTo(0))
             .body("heap_used_mb",          greaterThan(0.0f))
-            .body("available_processors",  greaterThanOrEqualTo(1));
+            .body("available_processors",  greaterThanOrEqualTo(1))
+            .body("process_rss.status", isOneOf("collected", "not-collected"))
+            .body("container_memory.status", isOneOf("collected", "not-collected", "not-applicable"))
+            .body("demo_evidence.status", is("not-collected"));
     }
 
     @Test
@@ -42,7 +45,7 @@ class PerformanceResourceTest {
     @Test
     void presenterAssetsAreServedLocally() {
         given().get("/").then().statusCode(200).body(containsString("presenter.mjs"));
-        given().get("/session.mjs").then().statusCode(200).body(containsString("runtime-lab.session.v1"));
+        given().get("/session.mjs").then().statusCode(200).body(containsString("runtime-lab.session.v2"));
         given().get("/presenter.css").then().statusCode(200).body(containsString("data-theme=\"light\""));
     }
 

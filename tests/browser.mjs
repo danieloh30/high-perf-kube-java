@@ -1,6 +1,7 @@
 import { chromium } from "playwright";
 import assert from "node:assert/strict";
 import { mkdir } from "node:fs/promises";
+const BASE_URL = process.env.DEMO_TEST_URL || "http://localhost:8080";
 const browser = await chromium.launch({
   headless: true,
   executablePath: process.env.CHROMIUM_EXECUTABLE || undefined,
@@ -18,7 +19,7 @@ page.on("request", (r) => {
 });
 if (!process.argv.includes("--fixtures-only")) {
   try {
-    await page.goto("http://localhost:8080");
+    await page.goto(BASE_URL);
     await page.getByText("Connected · live", { exact: true }).waitFor();
     assert.equal(benchmarkRequests, 0);
     assert.equal(
@@ -44,7 +45,7 @@ if (!process.argv.includes("--fixtures-only")) {
       "light",
     );
     await page
-      .getByRole("button", { name: "Save baseline snapshot", exact: true })
+      .getByRole("button", { name: "Save pre-load baseline", exact: true })
       .click();
     assert.equal(benchmarkRequests, 0);
     await page
@@ -64,12 +65,12 @@ if (!process.argv.includes("--fixtures-only")) {
     assert.equal(benchmarkRequests, 6);
     await page.screenshot({ path: "test-results/load-light.png" });
     const saved = await page.evaluate(() =>
-      JSON.parse(localStorage.getItem("runtime-lab.session.v1")),
+      JSON.parse(localStorage.getItem("runtime-lab.session.v2")),
     );
     assert.equal(saved.runs[0].samples.length, 6);
     await page
       .getByRole("button", {
-        name: "Save baseline and switch runtime",
+        name: "Save post-load and switch runtime",
         exact: true,
       })
       .click();
@@ -84,7 +85,7 @@ if (!process.argv.includes("--fixtures-only")) {
         .getByText("Connected · live", { exact: true })
         .waitFor({ timeout: 60000 });
       const after = await page.evaluate(() =>
-        JSON.parse(localStorage.getItem("runtime-lab.session.v1")),
+        JSON.parse(localStorage.getItem("runtime-lab.session.v2")),
       );
       assert.ok(after.runs.length >= 2);
       assert.equal(after.runs[0].samples.length, 6);
@@ -104,7 +105,7 @@ if (!process.argv.includes("--fixtures-only")) {
     await page.reload();
     await page.getByText("Connected · live", { exact: true }).waitFor();
     const restored = await page.evaluate(() =>
-      JSON.parse(localStorage.getItem("runtime-lab.session.v1")),
+      JSON.parse(localStorage.getItem("runtime-lab.session.v2")),
     );
     assert.equal(restored.runs[0].samples.length, 6);
     assert.equal(benchmarkRequests, 6);
@@ -162,7 +163,7 @@ await p.route("**/perf/fib?n=40", async (route) => {
   });
 });
 try {
-  await p.goto("http://localhost:8080");
+  await p.goto(BASE_URL);
   await p.getByText("Connected · live", { exact: true }).waitFor();
   assert.ok(
     await p
@@ -171,7 +172,7 @@ try {
       .then((t) => t.includes("Unavailable")),
   );
   await p
-    .getByRole("button", { name: "Save baseline snapshot", exact: true })
+    .getByRole("button", { name: "Save pre-load baseline", exact: true })
     .click();
   await p
     .getByRole("button", { name: "Run first sample", exact: true })
@@ -194,11 +195,22 @@ try {
       .textContent.includes("2/5 successful"),
   );
   let data = await p.evaluate(() =>
-    JSON.parse(localStorage.getItem("runtime-lab.session.v1")),
+    JSON.parse(localStorage.getItem("runtime-lab.session.v2")),
   );
   assert.equal(data.runs[0].samples.length, 3);
   assert.equal(data.runs[0].batches[1].error, "HTTP 500");
   assert.equal(backendReadsWhileComputing, 0);
+  await p
+    .getByRole("button", {
+      name: "Save post-load and switch runtime",
+      exact: true,
+    })
+    .click();
+  await p.waitForFunction(() =>
+    JSON.parse(
+      localStorage.getItem("runtime-lab.session.v2"),
+    ).runs[0].snapshots.some((x) => x.kind === "post-load"),
+  );
   runtime = "native-image";
   id = "test-native";
   failAt = -1;
@@ -206,11 +218,14 @@ try {
     () => document.getElementById("runtime").textContent === "Native Image",
   );
   await p
+    .getByRole("button", { name: "Save pre-load baseline", exact: true })
+    .click();
+  await p
     .getByRole("button", { name: "Run first sample", exact: true })
     .click();
   await p.waitForFunction(
     () =>
-      JSON.parse(localStorage.getItem("runtime-lab.session.v1")).runs.at(-1)
+      JSON.parse(localStorage.getItem("runtime-lab.session.v2")).runs.at(-1)
         .samples.length === 1,
   );
   await p.getByRole("button", { name: "04  Compare", exact: true }).click();
@@ -236,7 +251,7 @@ try {
   await p.getByRole("button", { name: "Fullscreen ↗", exact: true }).click();
   await p.waitForFunction(() => !document.fullscreenElement);
   data = await p.evaluate(() =>
-    JSON.parse(localStorage.getItem("runtime-lab.session.v1")),
+    JSON.parse(localStorage.getItem("runtime-lab.session.v2")),
   );
   assert.equal(data.runs.length, 2);
   assert.equal(data.runs[0].samples.length, 3);
@@ -256,15 +271,221 @@ try {
   assert.equal(
     (
       await p.evaluate(() =>
-        JSON.parse(localStorage.getItem("runtime-lab.session.v1")),
+        JSON.parse(localStorage.getItem("runtime-lab.session.v2")),
       )
     ).runs[0].samples.length,
     3,
+  );
+  assert.ok(
+    (await p.locator("#computation-insight").textContent()).includes(
+      "unavailable",
+    ),
+  );
+  p.once("dialog", (dialog) => dialog.accept());
+  await p
+    .getByRole("button", { name: "Reset comparison session", exact: true })
+    .click();
+  await p.waitForFunction(() =>
+    JSON.parse(localStorage.getItem("runtime-lab.session.v2")).runs.every(
+      (r) => r.samples.length === 0,
+    ),
+  );
+  assert.equal(
+    await p.evaluate(() => localStorage.getItem("runtime-lab.session.v1")),
+    null,
   );
   console.log(
     "Isolated browser failure tests: partial batch, polling suspension, runtime change, unknown values, result mismatch, export/import passed",
   );
 } finally {
   await c.close();
+}
+
+// Positive two-runtime collection scenario: fixtures remain in this isolated context only.
+const evidenceContext = await browser.newContext({
+  viewport: { width: 1920, height: 1080 },
+});
+const e = await evidenceContext.newPage();
+let evidenceRuntime = "jvm";
+const counts = {
+  jvm: { fib: 0, primes: 0 },
+  "native-image": { fib: 0, primes: 0 },
+};
+const processId = () => `evidence-test-${evidenceRuntime}`;
+await e.route("**/perf/info", (route) => {
+  const total = counts[evidenceRuntime].fib + counts[evidenceRuntime].primes;
+  return route.fulfill({
+    json: {
+      runtime_type: evidenceRuntime,
+      process_id: processId(),
+      vm_name: "TEST FIXTURE ONLY",
+      available_processors: 2,
+      uptime_ms: 500,
+      heap_used_mb: total ? 34 : 12,
+      heap_max_mb: 256,
+      non_heap_used_mb: 20,
+      process_rss: {
+        status: "collected",
+        value_mib: total ? 100 : 80,
+        source: "TEST RSS",
+        timestamp: "2026-11-05T00:00:00Z",
+      },
+      container_memory: {
+        status: "not-applicable",
+        reason: "TEST host process",
+      },
+      demo_evidence: {
+        status: "collected",
+        data: {
+          process_id: processId(),
+          runtime: evidenceRuntime === "jvm" ? "jvm" : "native",
+          revision: "TEST-REVISION",
+          source_hash: "TEST-HASH",
+          dirty: false,
+          environment_mode: "host",
+          settings: {
+            cpu: "2",
+            heap: "64m/256m",
+            memory: "none",
+            flags: "same relevant flags",
+            environment: "test environment",
+          },
+          costs: {
+            build_seconds: 12,
+            peak_build_mib: 100,
+            artifact_bytes: 1024,
+            image_bytes: null,
+            source: "TEST build log",
+            timestamp: "2026-11-05T00:00:00Z",
+          },
+          launch: {
+            duration_ms: 450,
+            source: "TEST terminal monotonic clock",
+            timestamp: "2026-11-05T00:00:00Z",
+            polling_interval_ms: 50,
+          },
+        },
+      },
+    },
+  });
+});
+await e.route("**/q/health/ready", (route) =>
+  route.fulfill({
+    json: {
+      status: "UP",
+      checks: [
+        {
+          name: "app-readiness",
+          data: { process_id: processId(), startup_time_ms: 100 },
+        },
+      ],
+    },
+  }),
+);
+for (const [benchmark, url] of [
+  ["fib", "**/perf/fib?n=40"],
+  ["primes", "**/perf/primes?limit=1000000"],
+])
+  await e.route(url, (route) => {
+    counts[evidenceRuntime][benchmark]++;
+    return route.fulfill({
+      json: {
+        process_id: processId(),
+        duration_ns: evidenceRuntime === "jvm" ? 1000000 : 800000,
+        ...(benchmark === "fib"
+          ? { input_n: 40, result: 102334155 }
+          : { limit: 1000000, prime_count: 78498, largest_prime: 999983 }),
+      },
+    });
+  });
+async function collect(workload) {
+  await e.locator("#load-benchmark").selectOption(workload);
+  await e
+    .getByRole("button", { name: "Run first sample", exact: true })
+    .click();
+  await e.waitForFunction(
+    ({ id, workload }) =>
+      JSON.parse(localStorage.getItem("runtime-lab.session.v2"))
+        .runs.find((r) => r.id === id)
+        .samples.filter((x) => x.benchmark === workload).length === 1,
+    { id: processId(), workload },
+  );
+  await e.getByRole("button", { name: "Run 5 more", exact: true }).click();
+  await e.waitForFunction(
+    ({ id, workload }) =>
+      JSON.parse(localStorage.getItem("runtime-lab.session.v2"))
+        .runs.find((r) => r.id === id)
+        .samples.filter((x) => x.benchmark === workload).length === 6,
+    { id: processId(), workload },
+  );
+}
+try {
+  await e.goto(BASE_URL);
+  await e.getByText("Connected · live", { exact: true }).waitFor();
+  await e
+    .getByRole("button", { name: "Save pre-load baseline", exact: true })
+    .click();
+  await collect("fib");
+  await collect("primes");
+  await e
+    .getByRole("button", {
+      name: "Save post-load and switch runtime",
+      exact: true,
+    })
+    .click();
+  await e.waitForFunction(
+    () =>
+      JSON.parse(localStorage.getItem("runtime-lab.session.v2")).phase === 2,
+  );
+  evidenceRuntime = "native-image";
+  await e.waitForFunction(
+    () => document.getElementById("runtime").textContent === "Native Image",
+  );
+  await e
+    .getByRole("button", { name: "Save pre-load baseline", exact: true })
+    .click();
+  await collect("fib");
+  await collect("primes");
+  await e
+    .getByRole("button", { name: "Save post-load and compare", exact: true })
+    .click();
+  await e.locator("#compare-benchmark").selectOption("fib");
+  assert.match(
+    await e.locator("#computation-insight").textContent(),
+    /20.0% less/,
+  );
+  assert.equal(
+    (await e.locator("#warnings").textContent()).includes("unknown"),
+    false,
+  );
+  const paired = await e.evaluate(
+    () => JSON.parse(localStorage.getItem("runtime-lab.session.v2")).runs,
+  );
+  assert.equal(paired.length, 2);
+  for (const run of paired) {
+    assert.equal(run.snapshots[0].info.heap_used_mb, 12);
+    assert.equal(run.snapshots[1].info.heap_used_mb, 34);
+    assert.equal(run.costs.artifact_bytes, 1024);
+  }
+  await e.screenshot({ path: "test-results/insights-test-fixture.png" });
+  assert.ok(
+    await e
+      .locator("footer")
+      .evaluate((n) => n.getBoundingClientRect().bottom <= 1080),
+  );
+  await e.locator("#comparison details").evaluate((n) => (n.open = true));
+  assert.match(await e.locator("#comparison").textContent(), /TEST RSS/);
+  assert.match(await e.locator("#comparison").textContent(), /TEST build log/);
+  assert.match(await e.locator("#comparison").textContent(), /Not applicable/);
+  await e.locator("#observation-phase").selectOption("post-load");
+  assert.match(
+    await e.locator("#comparison").textContent(),
+    /Post-load snapshot/,
+  );
+  console.log(
+    "Positive two-runtime fixture checks passed: baseline preservation, prime workload, insights, automatic evidence, OS RSS, build costs, snapshot phase selection",
+  );
+} finally {
+  await evidenceContext.close();
   await browser.close();
 }

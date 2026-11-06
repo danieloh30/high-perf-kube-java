@@ -9,7 +9,8 @@ Start the complete local workflow from this checkout:
 ```sh
 ./demo.sh up       # prepare both artifacts if needed, then start packaged JVM
 ./demo.sh switch   # switch to the other prepared runtime on the same port
-./demo.sh down     # stop the script-owned process
+./demo.sh down     # stop the script-owned process; keep artifacts
+./demo.sh reset    # stop it and delete demo-artifacts contents plus target/
 ```
 
 Requires macOS/Linux, Python 3.9+, and GraalVM JDK 25 with native-image.
@@ -32,22 +33,33 @@ optional Kubernetes observations and curl fallback.
   count, median, min and max. No benchmark requests on connect, poll or navigation.
 - Process identities on info and benchmark responses prevent results mixing after
   runtime changes or same-runtime restarts. Partial failures retain successful calls.
+- Compare includes measured computation insights and an optional prime-sieve workload.
+- Pre-load and post-load snapshots remain separate; missed baselines stay explicit.
 - Comparisons check input and output agreement; server and browser durations have
   separate boundaries. Unknown/different resource settings are visible.
-- Build time, peak build memory, artifact bytes and image bytes are recorded
-  separately with measurement source and timestamp, or remain “not collected.”
+- Launcher build costs, artifact bytes, revision, launch settings and terminal-observed
+  readiness time attach automatically through process-matched read-only evidence.
+- OS process RSS is collected separately from heap; container cgroup usage is
+  collected only when identified and readable. Image bytes are not applicable
+  to the host executable workflow. External cluster/image observations stay labeled.
 - Optional imported Kubernetes observations; no cluster or shell access in the SPA.
 
-Sessions use localStorage key `runtime-lab.session.v1`. Export before clearing
+Sessions use localStorage key `runtime-lab.session.v2`; v1 sessions migrate with
+legacy snapshots labeled as having unknown phase. Export before clearing
 browser data or changing origin. Invalid/unsupported JSON imports are rejected.
 Session details contain individual samples, baseline snapshots, definitions and raw
 JSON. Run settings lock after sampling to preserve the recorded conditions.
+Reset comparison session clears saved browser results; terminal `reset` separately
+clears generated artifacts. Export any results you need to retain first.
 
 ## Existing endpoints (preserved)
 
 - `/hello`, `/hello/perf`, `/hello/runtime`: greeting and runtime text.
 - `/perf/info`: runtime, Java/VM identity, uptime, heap/non-heap and processors.
-  Includes `process_id` and `process_start_epoch_ms` for process identification.
+  Includes `process_id` and `process_start_epoch_ms` for process identification,
+  OS `process_rss`, `container_memory`, and process-matched `demo_evidence`.
+  Evidence is read only from the launcher-configured file; there is no HTTP file
+  path parameter or process-control endpoint.
 - `/perf/fib?n=40`: naive recursive Fibonacci (1–45; invalid input defaults to 40).
 - `/perf/primes?limit=1000000`: sieve (100–10,000,000; invalid input defaults to
   1,000,000). Retained as a secondary curl demo.

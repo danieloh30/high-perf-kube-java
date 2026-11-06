@@ -33,6 +33,9 @@ public class PerformanceResource {
     @Inject
     MeterRegistry registry;
 
+    @Inject DemoEvidence evidence;
+    @Inject RuntimeMeasurements measurements;
+
     @Inject
     @org.eclipse.microprofile.health.Readiness
     AppReadinessCheck process;
@@ -65,6 +68,9 @@ public class PerformanceResource {
         info.put("heap_committed_mb", toMb(memory.getHeapMemoryUsage().getCommitted()));
         info.put("non_heap_used_mb", toMb(memory.getNonHeapMemoryUsage().getUsed()));
         info.put("available_processors", Runtime.getRuntime().availableProcessors());
+        info.put("process_rss", measurements.rss());
+        info.put("container_memory", measurements.container());
+        info.put("demo_evidence", evidence.read(process.processId()));
         return info;
     }
 

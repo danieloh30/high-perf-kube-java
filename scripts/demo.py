@@ -108,6 +108,8 @@ class Demo:
     def __init__(self, root=ROOT):
         self.root = root.resolve()
         self.home = self.root / 'demo-artifacts'
+        if self.home.is_symlink():
+            raise DemoError('Refusing to manage a symlinked demo-artifacts directory.')
         self.home.mkdir(exist_ok=True)
         self.current = self.home / 'current.json'
         self.state = self.home / 'process.json'
@@ -175,7 +177,7 @@ class Demo:
     def no_dev_mode(self):
         args = capture(['ps', '-ww', '-axo', 'args='])
         for line in args.splitlines():
-            if str(self.root) in line and any(term in line for term in ['quarkus:dev', 'DevModeMain', 'QuarkusDevModeTest']):
+            if str(self.root) in line and any(term in line for term in ['quarkus:dev', 'DevModeMain', 'QuarkusDevModeTest', '-dev.jar']):
                 raise DemoError('Quarkus dev mode is running for this checkout. Stop it before packaging (MCP: quarkus_stop).')
 
     def bundle(self, required=True):
@@ -343,13 +345,17 @@ class Demo:
         self.port_free(settings['port'])
         directory = self.home / manifest['bundle']
         token = uuid.uuid4().hex
+        evidence_dir = self.home / 'evidence'
+        evidence_dir.mkdir(exist_ok=True)
+        evidence_path = evidence_dir / f'{token}.json'
         flags = [f'-Xms{settings["xms"]}', f'-Xmx{settings["xmx"]}', f'-XX:ActiveProcessorCount={settings["cpus"]}',
-                 f'-Dquarkus.http.port={settings["port"]}', '-Dquarkus.http.host=127.0.0.1', f'-Ddemo.launch.id={token}']
+                 f'-Dquarkus.http.port={settings["port"]}', '-Dquarkus.http.host=127.0.0.1', f'-Ddemo.launch.id={token}', f'-Ddemo.evidence.path={evidence_path}']
         args = [manifest['toolchain']['java']] + flags + ['-jar', str(directory / 'jvm/quarkus-app/quarkus-run.jar')] if runtime == 'jvm' else [str(directory / 'native/app')] + flags
         log_dir = self.home / 'logs'
         log_dir.mkdir(exist_ok=True)
         log = log_dir / f'{runtime}-{token[:8]}.log'
         print(f'Starting packaged {runtime}; waiting up to 60 s for readiness. Log: {log}', flush=True)
+        launch_start = time.perf_counter()
         with log.open('w') as stream:
             child = subprocess.Popen(args, cwd=self.root, stdin=subprocess.DEVNULL, stdout=stream, stderr=subprocess.STDOUT, start_new_session=True)
         self.children.append(child)
@@ -367,13 +373,29 @@ class Demo:
                     if info.get('available_processors') != settings['cpus']:
                         raise DemoError('Runtime processor count differs from DEMO_CPUS; check the runtime flags.')
                     state['process_id'] = info['process_id']
+                    observed_ms = (time.perf_counter() - launch_start) * 1000
+                    costs_path = directory / 'costs' / f'{runtime}.json'
+                    costs = read_json(costs_path) if costs_path.exists() else {}
+                    evidence = dict(version=1, process_id=info['process_id'], runtime=runtime,
+                                    revision=manifest['revision'], source_hash=manifest['source_hash'],
+                                    dirty=manifest['dirty'], collected_at=stamp(), costs=costs,
+                                    environment_mode='host', image_status='not-applicable: no container image built',
+                                    settings=dict(cpu=f'ActiveProcessorCount={settings["cpus"]}; no OS quota set by demo.sh',
+                                                  heap=f'-Xms{settings["xms"]} -Xmx{settings["xmx"]}',
+                                                  memory='none set by demo.sh (host run)',
+                                                  flags=' '.join(flag for flag in flags if not flag.startswith(('-Ddemo.launch.id=', '-Ddemo.evidence.path='))),
+                                                  environment=platform.platform() + ' / ' + platform.machine()),
+                                    launch=dict(duration_ms=observed_ms, source='demo.sh monotonic clock: before Popen to successful info + readiness checks',
+                                                timestamp=stamp(), polling_interval_ms=50,
+                                                boundary='terminal launch to observed readiness, includes process creation and polling; not Kubernetes readiness'))
+                    write_json(evidence_path, evidence)
                     write_json(self.state, state)
                     print(f'{runtime} ready at http://localhost:{settings["port"]}\nPID {child.pid}; log: {log}\nSource: {manifest["revision"]}{" (dirty checkout)" if manifest["dirty"] else ""}')
                     print('Keep the SPA open. Use ./demo.sh switch for the other prepared runtime.')
                     return
                 except (OSError, ValueError, DemoError, urllib.error.URLError) as exc:
                     last_error = str(exc)
-                time.sleep(0.5)
+                time.sleep(0.05)
             raise DemoError(f'Readiness timed out: {last_error}. See {log}')
         except BaseException:
             # This child was created in this invocation, so its ownership is certain.
@@ -437,6 +459,20 @@ class Demo:
         time.sleep(2)
         self.start(runtime, manifest, settings)
 
+    def reset(self):
+        # Keep the lock inode: replacing it would let a concurrent command bypass flock.
+        self.no_dev_mode()
+        self.down()
+        paths = [p for p in self.home.iterdir() if p.name != 'command.lock']
+        paths.append(self.root / 'target')
+        for path in paths:
+            if path.is_symlink() or path.is_file():
+                path.unlink()
+            elif path.is_dir():
+                shutil.rmtree(path)
+        print('Reset complete: prepared bundles, evidence, logs and target/ removed.')
+        print('Browser sessions are separate: use Reset comparison session in the SPA to clear saved results.')
+
     def status(self):
         state = self.process()
         if not state:
@@ -472,7 +508,7 @@ def main():
     up.add_argument('runtime', choices=['jvm', 'native'], nargs='?', default='jvm')
     switch = subs.add_parser('switch', help='Switch to the other prepared runtime, preserving settings')
     switch.add_argument('runtime', choices=['jvm', 'native'], nargs='?')
-    for command, help_text in [('down', 'Stop only the script-owned runtime'), ('status', 'Show runtime, health and launch settings'), ('logs', 'Print the last 80 log lines'), ('costs', 'Print measured build costs and provenance')]:
+    for command, help_text in [('down', 'Stop only the script-owned runtime'), ('status', 'Show runtime, health and launch settings'), ('logs', 'Print the last 80 log lines'), ('costs', 'Print measured build costs and provenance'), ('reset', 'Stop managed demo and remove demo artifacts plus target/')]:
         subs.add_parser(command, help=help_text)
     args = parser.parse_args()
     if sys.version_info < (3, 9) or platform.system() not in ['Darwin', 'Linux']:
