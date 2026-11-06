@@ -15,7 +15,9 @@ Start the complete local workflow from this checkout:
 
 Requires macOS/Linux, Python 3.9+, and GraalVM JDK 25 with native-image.
 GraalVM is discovered through `GRAALVM_HOME`, `JAVA_HOME`, `PATH`, or SDKMAN.
-Use `./demo.sh prepare` before the talk, and `./demo.sh costs` for measured build
+Use `./demo.sh prepare` before the talk (builds the host pair and pushes the Jib
+image; configure registry credentials first), or `prepare --no-image` for host-only
+preparation. Use `./demo.sh costs` for measured build
 costs. Artifacts are preserved in separate timestamped bundles and reused until
 application sources change. `status` and `logs` provide launch details.
 
@@ -26,10 +28,11 @@ optional Kubernetes observations and curl fallback.
 For the optional container/cluster chapter, prepare and push the JVM image before presenting:
 
 ```sh
-./demo.sh prepare --image quay.io/danieloh30/high-perf-java:jvm-demo --platform linux/amd64 --push-image
+./demo.sh prepare  # defaults: --image quay.io/danieloh30/high-perf-java:1.0 --platform linux/amd64 --push-image
 ```
 
-Choose your cluster's platform and configure registry credentials first. The build
+Override `--image` or `--platform` as needed. Use `--no-push-image` for a local
+Podman load or `--no-image` to skip image work. Configure registry credentials first. The build
 explicitly uses `quarkus-container-image-jib`. See DEMO.md for local Podman checks,
 console deployment and the 1 → 100 → 1 scaling exercise. No real registry push or
 cluster scale is performed by repository tests.
@@ -60,8 +63,9 @@ cluster scale is performed by repository tests.
   image work is isolated from host artifacts. The SPA displays image receipts.
 - OpenShift console handoff copies a tag/digest and opens your configured Topology URL.
 - A bounded Route readiness check separates browser access from replica readiness.
-- `demo.sh scale --namespace … --deployment … --replicas 100` (then 1) records
-  Ready/Available convergence through the authenticated oc CLI. The SPA displays
+- `demo.sh scale 100` (then `scale 1`) records
+  Ready/Available convergence through the authenticated oc CLI. Namespace and Deployment
+  default to `high-perf-java`; override with `--namespace` / `--deployment`. The SPA displays
   timestamped observations; it has no shell or Kubernetes process-control endpoint.
 
 Sessions use localStorage key `runtime-lab.session.v2`; v1 sessions migrate with

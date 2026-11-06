@@ -14,10 +14,13 @@ current/uniquely matching JDK 25. An explicit selection is also supported:
 GRAALVM_HOME="$HOME/.sdkman/candidates/java/25-graalce" ./demo.sh prepare
 ```
 
-Normally, run from this checkout:
+Configure registry credentials first (`QUARKUS_CONTAINER_IMAGE_USERNAME` /
+`QUARKUS_CONTAINER_IMAGE_PASSWORD`, or a credential provider). By default,
+`prepare` builds and pushes `quay.io/danieloh30/high-perf-java:1.0` for
+`linux/amd64` using Quarkus Jib. Run from this checkout:
 
 ```sh
-./demo.sh prepare       # build both artifacts; do this BEFORE the talk
+./demo.sh prepare       # build host pair + Jib image, push :1.0 for linux/amd64
 ./demo.sh costs         # inspect recorded build costs and source revision
 ./demo.sh up            # start the prepared JVM artifact; no dev mode
 ```
@@ -30,9 +33,11 @@ selects the completed bundle. Source/POM/wrapper changes invalidate the pair;
 `prepare --force` rebuilds even if the source hash matches.
 
 The script delegates packaging to the repository's Maven wrapper and native
-profile, suppressing container-image build/push. Both builds use the selected
+profile. Host JVM/native builds suppress container-image build/push; a separate
+Jib build then prepares and pushes the JVM image. Both builds use the selected
 GraalVM JDK 25. The packaged JVM launch reuses that recorded Java executable.
-No container runtime is needed for this host-native demo. A container-built Linux
+Registry-only Jib push needs no local container runtime. For host-only preparation,
+use `./demo.sh prepare --no-image`; `up` still prepares only host artifacts when needed. A container-built Linux
 executable would not run directly on macOS.
 
 ## Presenter script (5–7 minutes)
@@ -142,7 +147,7 @@ environment or credential provider. Do not enter credentials in the SPA or
 commit them. Match the target cluster architecture:
 
 ```sh
-./demo.sh prepare --image quay.io/danieloh30/high-perf-java:jvm-demo \
+./demo.sh prepare --image quay.io/danieloh30/high-perf-java:1.0 \
   --platform linux/amd64 --push-image
 ./demo.sh up
 ```
@@ -154,7 +159,8 @@ output directory under `demo-artifacts/images/`, preserving host demo artifacts.
 It does not invoke `podman build` or `docker build`.
 
 To build only the image later, use `./demo.sh image --image … --platform … --push`.
-Without `--push` / `--push-image`, Jib builds and loads the image through Podman;
+Use `./demo.sh prepare --no-push-image` or `./demo.sh image` to build and
+load locally through Podman;
 start the Podman machine first. Registry-only pushes do not need a local daemon.
 Jib's dependency/application layers help incremental reuse, especially with warm
 caches; do not promise a fixed build-time improvement.
@@ -168,7 +174,7 @@ Say: “Quarkus already knows how the application is packaged. Jib turns that in
 container layers without a Dockerfile. Dependencies can stay cached while the
 application layer changes. We pushed this image before the talk.”
 
-For an optional Podman functional check, build locally without the push flag and
+For an optional Podman functional check, build with `prepare --no-push-image` and
 use the displayed `podman run` command on port 8082. This opens a separate browser
 origin; it does not silently mix a container/VM measurement into host JVM/native
 results. macOS Podman uses a Linux VM; cross-architecture emulation changes the
@@ -193,7 +199,7 @@ reference; otherwise the configured tag is copied and its availability is unveri
 Click **Open OpenShift console**. In your prepared project:
 
 1. Open Topology → Add to Project → Container Image (or +Add → Container Image).
-2. Paste `quay.io/danieloh30/high-perf-java:jvm-demo` or the copied digest reference.
+2. Paste `quay.io/danieloh30/high-perf-java:1.0` or the copied digest reference.
    Do not paste the Quay web-page URL.
 3. Choose a **Deployment**, explicitly name it `high-perf-java`, select service
    port 8080 and create a Route.
@@ -230,9 +236,17 @@ Return to **06 OpenShift**, verify the project and Deployment name, and expand
 **Scale exercise: 1 → 100 → 1**. Use the copy buttons or run:
 
 ```sh
-./demo.sh scale --namespace high-perf-java --deployment high-perf-java --replicas 100
-./demo.sh scale --namespace high-perf-java --deployment high-perf-java --replicas 1
+./demo.sh scale 100
+./demo.sh scale 1
 ```
+
+Namespace and Deployment both default to `high-perf-java`. Override either when needed:
+
+```sh
+./demo.sh scale 100 --namespace my-project --deployment my-app --timeout 600
+```
+
+The older `--replicas 100` syntax remains supported.
 
 These commands use your authenticated `oc` CLI and actually change **only the
 named Deployment**. No cluster token is sent to the SPA. The default observation

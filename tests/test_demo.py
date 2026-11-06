@@ -245,11 +245,38 @@ class DemoTests(unittest.TestCase):
         self.assertEqual((self.root/'target/keep').read_text(),'host artifact')
         self.assertEqual(demo.read_json(self.d.home/'images/latest.json')['digest'],'sha256:'+'a'*64)
 
-    def test_image_rejects_registry_web_urls_and_prepare_requires_explicit_push_image(self):
+    def test_image_rejects_registry_web_urls(self):
         with self.assertRaisesRegex(demo.DemoError,'tagged image'):
             self.d.image('https://quay.io/repository/example/demo','linux/amd64')
-        with patch.object(demo.sys,'argv',['demo.sh','prepare','--push-image']),patch.object(demo,'Demo',return_value=self.d),patch.object(self.d,'prepare') as prepare:
-            self.assertEqual(demo.main(),1);prepare.assert_not_called()
+
+    def test_prepare_image_defaults_overrides_and_opt_out(self):
+        cases = [
+            ([], ('quay.io/danieloh30/high-perf-java:1.0','linux/amd64',True)),
+            (['--image','quay.io/example/app:2','--platform','linux/arm64','--no-push-image'], ('quay.io/example/app:2','linux/arm64',False)),
+            (['--no-image'], None),
+        ]
+        for flags, expected in cases:
+            with self.subTest(flags=flags), patch.dict(os.environ,{},clear=False), patch.object(demo.sys,'argv',['demo.sh','prepare',*flags]), patch.object(demo,'Demo',return_value=self.d), patch.object(self.d,'prepare') as prepare, patch.object(self.d,'image') as image:
+                os.environ.pop('DEMO_IMAGE',None)
+                self.assertEqual(demo.main(),0)
+                prepare.assert_called_once_with(False)
+                if expected is None:image.assert_not_called()
+                else:image.assert_called_once_with(*expected)
+
+    def test_scale_cli_shortcuts_overrides_and_legacy_syntax(self):
+        for flags, expected in [
+            (['100'], ('high-perf-java','high-perf-java',100,300)),
+            (['1'], ('high-perf-java','high-perf-java',1,300)),
+            (['100','--namespace','custom','--deployment','app','--timeout','600'], ('custom','app',100,600)),
+            (['--replicas','1'], ('high-perf-java','high-perf-java',1,300)),
+        ]:
+            with self.subTest(flags=flags), patch.object(demo.sys,'argv',['demo.sh','scale',*flags]), patch.object(demo,'Demo',return_value=self.d), patch.object(self.d,'scale') as scale:
+                self.assertEqual(demo.main(),0)
+                scale.assert_called_once_with(*expected)
+        for flags in [[], ['100','--replicas','1']]:
+            with self.subTest(flags=flags), patch.object(demo.sys,'argv',['demo.sh','scale',*flags]), patch.object(demo,'Demo') as constructor, self.assertRaises(SystemExit):
+                demo.main()
+            constructor.assert_not_called()
 
     def run_scale_fixture(self, original, target, failure=False):
         calls=[];poll=[0]

@@ -1,6 +1,6 @@
 export function deploymentDefaults() {
   return {
-    image: "quay.io/danieloh30/high-perf-java:jvm-demo",
+    image: "quay.io/danieloh30/high-perf-java:1.0",
     platform: "linux/amd64",
     consoleUrl: "",
     namespace: "high-perf-java",
@@ -70,9 +70,16 @@ export function scaleCommands(settings) {
     !/^[a-z0-9](?:[-a-z0-9.]*[a-z0-9])?$/.test(settings.deployment)
   )
     return null;
-  const args = `--namespace '${settings.namespace}' --deployment '${settings.deployment}'`;
+  const args = [
+    settings.namespace === "high-perf-java"
+      ? ""
+      : ` --namespace '${settings.namespace}'`,
+    settings.deployment === "high-perf-java"
+      ? ""
+      : ` --deployment '${settings.deployment}'`,
+  ].join("");
   return {
-    out: `./demo.sh scale ${args} --replicas 100`,
-    inside: `./demo.sh scale ${args} --replicas 1`,
+    out: `./demo.sh scale 100${args}`,
+    inside: `./demo.sh scale 1${args}`,
   };
 }

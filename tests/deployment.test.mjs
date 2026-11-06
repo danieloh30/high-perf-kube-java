@@ -54,10 +54,17 @@ test("only a matching published Jib receipt promotes deployment to a digest refe
   s.receipt.image = "quay.io/other/app:tag";
   assert.equal(deployReference(s), s.image);
 });
-test("scaling commands require explicit names; phase migration preserves the old Kubernetes destination", () => {
+test("scaling commands use concise defaults and retain explicit overrides; old phases migrate", () => {
   const s = deploymentDefaults();
-  assert.match(scaleCommands(s).out, /--replicas 100$/);
-  assert.match(scaleCommands(s).inside, /--replicas 1$/);
+  assert.equal(s.image, "quay.io/danieloh30/high-perf-java:1.0");
+  assert.equal(scaleCommands(s).out, "./demo.sh scale 100");
+  assert.equal(scaleCommands(s).inside, "./demo.sh scale 1");
+  s.namespace = "my-project";
+  s.deployment = "my-app";
+  assert.equal(
+    scaleCommands(s).out,
+    "./demo.sh scale 100 --namespace 'my-project' --deployment 'my-app'",
+  );
   s.namespace = "x; oc delete all";
   assert.equal(scaleCommands(s), null);
   const old = fresh();

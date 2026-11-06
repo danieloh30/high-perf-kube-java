@@ -362,7 +362,7 @@ await e.route("**/perf/info", (route) => {
             version: 1,
             builder: "quarkus-container-image-jib",
             runtime: "jvm",
-            image: "quay.io/danieloh30/high-perf-java:jvm-demo",
+            image: "quay.io/danieloh30/high-perf-java:1.0",
             platform: "linux/amd64",
             digest: "sha256:" + "a".repeat(64),
             published: true,
@@ -561,7 +561,7 @@ try {
   );
   assert.match(
     await e.locator("#scale-out-command").textContent(),
-    /--replicas 100/,
+    /demo\.sh scale 100/,
   );
   assert.match(await e.locator("#scale-evidence").textContent(), /1 → 100/);
   await e.screenshot({ path: "test-results/openshift-test-fixture.png" });

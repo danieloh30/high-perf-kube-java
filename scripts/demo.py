@@ -22,6 +22,8 @@ import urllib.parse
 import uuid
 
 ROOT = Path(__file__).resolve().parents[1]
+DEFAULT_IMAGE = 'quay.io/danieloh30/high-perf-java:1.0'
+DEFAULT_DEPLOYMENT = 'high-perf-java'
 
 
 class DemoError(Exception):
@@ -464,7 +466,7 @@ class Demo:
     def image(self, image, platform_name, push=False):
         # Jib is the builder. Podman is used only for the local image load/inspection.
         if not re.fullmatch(r'[a-z0-9.-]+(?::[0-9]+)?/(?:[a-z0-9]+(?:[._-][a-z0-9]+)*/)*[a-z0-9]+(?:[._-][a-z0-9]+)*:[A-Za-z0-9_][A-Za-z0-9_.-]{0,127}', image):
-            raise DemoError('Use a tagged image reference, e.g. quay.io/danieloh30/high-perf-java:jvm-demo, not a registry web-page URL.')
+            raise DemoError('Use a tagged image reference, e.g. quay.io/danieloh30/high-perf-java:1.0, not a registry web-page URL.')
         if platform_name not in ['linux/amd64', 'linux/arm64']:
             raise DemoError('Choose linux/amd64 or linux/arm64 to match the target cluster or Podman machine.')
         tools = self.toolchain()
@@ -659,8 +661,9 @@ def main():
     parser = argparse.ArgumentParser(prog='./demo.sh', description='Prebuild both runtimes once; launch and switch packaged artifacts on one port.')
     subs = parser.add_subparsers(dest='command', required=True)
     prepare = subs.add_parser('prepare', help='Build missing/stale JVM and native artifacts; do not start')
-    prepare.add_argument('--image', help='Also build this tagged JVM image using Quarkus Jib after host preparation')
-    prepare.add_argument('--push-image', action='store_true', help='Push the Jib image directly to the registry; requires --image')
+    prepare.add_argument('--image', default=os.environ.get('DEMO_IMAGE', DEFAULT_IMAGE), help='JVM image to build with Quarkus Jib (default: %(default)s)')
+    prepare.add_argument('--no-image', action='store_true', help='Prepare only the host JVM/native pair; skip the image build and push')
+    prepare.add_argument('--push-image', action=argparse.BooleanOptionalAction, default=True, help='Push directly with Jib (default); --no-push-image loads locally with Podman')
     prepare.add_argument('--platform', dest='platform_name', choices=['linux/amd64','linux/arm64'], default='linux/amd64')
     prepare.add_argument('--force', action='store_true', help='Create a fresh bundle even when sources match')
     up = subs.add_parser('up', help='Prepare if needed, then start packaged JVM (or native)')
@@ -668,27 +671,32 @@ def main():
     switch = subs.add_parser('switch', help='Switch to the other prepared runtime, preserving settings')
     switch.add_argument('runtime', choices=['jvm', 'native'], nargs='?')
     scale = subs.add_parser('scale', help='Scale an explicitly named OpenShift Deployment and record Ready/Available convergence')
-    scale.add_argument('--namespace', required=True)
-    scale.add_argument('--deployment', required=True)
-    scale.add_argument('--replicas', type=int, required=True)
+    scale.add_argument('replica_count', type=int, nargs='?', help='Target replicas, e.g. scale 100 or scale 1')
+    scale.add_argument('--namespace', default=DEFAULT_DEPLOYMENT, help='Namespace (default: %(default)s)')
+    scale.add_argument('--deployment', default=DEFAULT_DEPLOYMENT, help='Deployment (default: %(default)s)')
+    scale.add_argument('--replicas', type=int, help='Alternative to the positional replica count')
     scale.add_argument('--timeout', dest='timeout_seconds', type=int, default=300)
     image = subs.add_parser('image', help='Build a JVM image with the installed Quarkus Jib extension; isolated from host artifacts')
-    image.add_argument('--image', default=os.environ.get('DEMO_IMAGE', 'quay.io/danieloh30/high-perf-java:jvm-demo'))
+    image.add_argument('--image', default=os.environ.get('DEMO_IMAGE', DEFAULT_IMAGE))
     image.add_argument('--platform', dest='platform_name', choices=['linux/amd64', 'linux/arm64'], default='linux/amd64')
     image.add_argument('--push', action='store_true', help='Push directly with Jib; no local Podman load (registry credentials required)')
     for command, help_text in [('down', 'Stop only the script-owned runtime'), ('status', 'Show runtime, health and launch settings'), ('logs', 'Print the last 80 log lines'), ('costs', 'Print measured build costs and provenance'), ('reset', 'Stop managed demo and remove demo artifacts plus target/')]:
         subs.add_parser(command, help=help_text)
     args = parser.parse_args()
+    if args.command == 'scale':
+        if args.replica_count is not None and args.replicas is not None:
+            parser.error('Use either scale COUNT or scale --replicas COUNT, not both.')
+        args.replicas = args.replica_count if args.replica_count is not None else args.replicas
+        if args.replicas is None:
+            parser.error('Specify a target, e.g. ./demo.sh scale 100 or ./demo.sh scale 1.')
     if sys.version_info < (3, 9) or platform.system() not in ['Darwin', 'Linux']:
         parser.error('Requires Python 3.9+ on macOS or Linux.')
     try:
         demo = Demo()
         with demo.lock():
             if args.command == 'prepare':
-                if args.push_image and not args.image:
-                    raise DemoError('--push-image requires --image registry/repository:tag')
                 demo.prepare(args.force)
-                if args.image:
+                if not args.no_image:
                     demo.image(args.image,args.platform_name,args.push_image)
             elif args.command == 'scale':
                 demo.scale(args.namespace,args.deployment,args.replicas,args.timeout_seconds)
