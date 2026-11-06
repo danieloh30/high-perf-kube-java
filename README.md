@@ -26,6 +26,8 @@ optional Kubernetes observations and curl fallback.
 ## Presenter features
 
 - High-contrast light/dark themes, fullscreen and 1080p projector layout.
+- Presenter assets use no-store and versioned URLs to avoid stale controls after
+  switching or rebuilding artifacts; older tabs may need one hard refresh.
 - Runtime identity, live connection state, bounded reconnect requests with backoff.
 - Versioned browser-local sessions, named comparisons, settings, snapshots and
   complete JSON export/import. Saved observations are separate from live metrics.

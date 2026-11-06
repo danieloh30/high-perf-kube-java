@@ -230,6 +230,24 @@ curl -fsS 'http://localhost:8080/perf/primes?limit=1000000'
 curl -fsS http://localhost:8080/q/metrics
 ```
 
+## If button names do not match this guide
+
+The current buttons are **Save pre-load baseline**, **Save post-load and switch
+runtime** (JVM), and **Save post-load and compare** (after collecting the other
+runtime). If you see “Save baseline and switch runtime”, the tab has an older
+JavaScript version. Older artifacts served assets as immutable for one day.
+
+Hard-refresh once (macOS: Cmd+Shift+R; Windows/Linux: Ctrl+Shift+R). This keeps
+localStorage results. The fixed build serves presenter assets with no-store and
+versioned URLs. Restarting an old prepared artifact does not update its files:
+stop it and run `./demo.sh prepare`, then `./demo.sh up`, before hard-refreshing.
+Do not reset artifacts or browser results just to refresh the UI. Existing v1
+samples migrate and can produce insights immediately when both runs have the
+selected workload. Current-process evidence attaches on the next successful
+poll. An older saved process may still lack snapshots or evidence that its old
+frontend never saved; those observations cannot be invented retroactively.
+Export those results before starting a fresh comparison if you need to keep them.
+
 ## Verification
 
 ```sh
@@ -239,6 +257,7 @@ python3 -m unittest discover -s tests -p test_demo.py
 npx playwright install chromium
 # App already running; use DEMO_TEST_URL=http://localhost:8081 if appropriate:
 npm run test:browser
+npm run test:cache       # regression with old modules already in browser cache
 ```
 
 Run backend tests through Quarkus MCP `devui-testing_runTests`, following AGENTS.md.

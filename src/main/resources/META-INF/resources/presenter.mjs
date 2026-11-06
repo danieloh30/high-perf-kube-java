@@ -17,7 +17,7 @@ import {
   settingsWarnings,
   numeric,
   batch,
-} from "./session.mjs";
+} from "./session.mjs?v=20261106-2";
 const $ = (id) => document.getElementById(id);
 let session;
 try {

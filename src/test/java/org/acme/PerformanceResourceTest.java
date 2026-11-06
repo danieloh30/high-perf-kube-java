@@ -49,6 +49,19 @@ class PerformanceResourceTest {
         given().get("/presenter.css").then().statusCode(200).body(containsString("data-theme=\"light\""));
     }
 
+    @Test
+    void presenterAssetsMustNotRemainCachedBetweenPreparedArtifacts() {
+        for (String path : new String[]{"/", "/index.html", "/presenter.css?v=20261106-2",
+                "/presenter.mjs?v=20261106-2", "/session.mjs?v=20261106-2"}) {
+            given().get(path).then().statusCode(200).header("Cache-Control", containsString("no-store"));
+        }
+        given().get("/").then().body(containsString("presenter.mjs?v=20261106-2"));
+        given().get("/presenter.mjs?v=20261106-2").then()
+            .body(containsString("session.mjs?v=20261106-2"))
+            .body(containsString("Save post-load and switch runtime"))
+            .body(containsString("Save post-load and compare"));
+    }
+
     // ── /perf/fib ─────────────────────────────────────────────────────────────
 
     @Test

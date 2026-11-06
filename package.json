@@ -3,7 +3,8 @@
   "private": true,
   "scripts": {
     "test": "node --test tests/session.test.mjs",
-    "test:browser": "node tests/browser.mjs"
+    "test:browser": "node tests/browser.mjs",
+    "test:cache": "node tests/cache-browser.mjs"
   },
   "devDependencies": {
     "playwright": "1.58.2"
