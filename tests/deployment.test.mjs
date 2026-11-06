@@ -7,11 +7,48 @@ import {
   deploymentCommands,
   deployReference,
   scaleCommands,
+  readinessUrl,
+  routeFailureMessage,
 } from "../src/main/resources/META-INF/resources/deployment.mjs";
 import {
   fresh,
   decode,
 } from "../src/main/resources/META-INF/resources/session.mjs";
+test("Route checks require HTTPS and provide exact-origin guidance without guessing the cause", () => {
+  assert.equal(readinessUrl("http://app.example"), null);
+  assert.equal(
+    readinessUrl("https://app.example/"),
+    "https://app.example/q/health/ready",
+  );
+  assert.equal(
+    readinessUrl("https://app.example/q/health/ready?x=1#part"),
+    "https://app.example/q/health/ready",
+  );
+  const message = routeFailureMessage(
+    new TypeError("Failed to fetch"),
+    "https://app.example/q/health/ready",
+    "http://localhost:8080",
+  );
+  assert.match(message, /HTTPS/);
+  assert.match(message, /http:\/\/localhost:8080/);
+  assert.match(message, /did not expose the exact cause/);
+  assert.doesNotMatch(
+    routeFailureMessage(
+      new Error(),
+      "https://app.example/q/health/ready",
+      "https://app.example",
+    ),
+    /CORS settings/,
+  );
+  assert.match(
+    routeFailureMessage(
+      { name: "AbortError" },
+      "https://app.example/q/health/ready",
+      "http://localhost:8080",
+    ),
+    /timed out after 5 seconds/,
+  );
+});
 test("image references are OCI tags, not registry web pages or shell commands", () => {
   const s = deploymentDefaults();
   assert.equal(taggedImage(s.image), true);

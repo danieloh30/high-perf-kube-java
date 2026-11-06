@@ -66,7 +66,9 @@ cluster scale is performed by repository tests.
 - Existing Jib extension builds a JVM image during `prepare --image … --push-image`;
   image work is isolated from host artifacts. The SPA displays image receipts.
 - OpenShift console handoff copies a tag/digest and opens your configured Topology URL.
-- A bounded Route readiness check separates browser access from replica readiness.
+- An HTTPS-only, bounded Route readiness check separates browser access from replica readiness.
+  Failures show the exact dashboard origin for CORS configuration, a direct HTTPS health
+  link, and distinct timeout or invalid-health-response messages.
 - `demo.sh scale 100` (then `scale 1`) records
   Ready/Available convergence through the authenticated oc CLI. Namespace and Deployment
   default to `high-perf-java`; override with `--namespace` / `--deployment`. The SPA displays

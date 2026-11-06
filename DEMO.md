@@ -480,3 +480,16 @@ fixtures exercise failures and switches. Launcher fixtures live in temporary
 directories and never become live demo artifacts. Real packaged/native rehearsal
 is separate: AGENTS.md prohibits the agent from running Maven manually and Dev MCP
 exposes no packaging operation. The presenter can execute demo.sh directly.
+
+### Troubleshoot an HTTPS Route check
+
+The Route check always uses HTTPS. Open **Open HTTPS readiness endpoint** to verify
+the health URL and browser certificate trust. A browser `Failed to fetch` does not
+identify whether the cause is connectivity, certificate trust or CORS. If the endpoint
+works in its own tab but not from the local dashboard, allow the dashboard's exact
+origin (shown in the error) in the deployed app's CORS settings. For the Jib
+preparation workflow, set `DEMO_DASHBOARD_ORIGINS` before building/pushing, or set
+`QUARKUS_HTTP_CORS_ENABLED=true` and `QUARKUS_HTTP_CORS_ORIGINS` on the Deployment
+and roll it out. HTTPS for the Route and HTTP for a loopback dashboard do not by
+themselves imply a protocol error. Timeouts and non-health/router responses are
+reported separately; unavailable readiness is never recorded as a benchmark failure.

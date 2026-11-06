@@ -596,6 +596,43 @@ try {
       .getElementById("route-status")
       .textContent.includes("readiness UP"),
   );
+  assert.equal(
+    await e.locator("#open-readiness").getAttribute("href"),
+    "https://app.example/q/health/ready",
+  );
+  await e.route("https://app.example/q/health/ready", (route) =>
+    route.abort("failed"),
+  );
+  await e
+    .getByRole("button", { name: "Check deployed app", exact: true })
+    .click();
+  await e.waitForFunction(() =>
+    document
+      .getElementById("route-status")
+      .textContent.includes("did not expose the exact cause"),
+  );
+  assert.match(
+    await e.locator("#route-status").textContent(),
+    new RegExp(new URL(BASE_URL).origin),
+  );
+  await e.route("https://app.example/q/health/ready", (route) =>
+    route.fulfill({
+      status: 503,
+      contentType: "text/html",
+      headers: { "access-control-allow-origin": "*" },
+      body: "TEST ONLY router page",
+    }),
+  );
+  await e
+    .getByRole("button", { name: "Check deployed app", exact: true })
+    .click();
+  await e.waitForFunction(() =>
+    document.getElementById("route-status").textContent.includes("HTTP 503"),
+  );
+  assert.match(
+    await e.locator("#route-status").textContent(),
+    /did not return a valid readiness response/,
+  );
   assert.match(
     await e.locator("#scale-out-command").textContent(),
     /demo\.sh scale 100/,

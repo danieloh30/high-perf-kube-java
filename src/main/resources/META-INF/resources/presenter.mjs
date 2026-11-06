@@ -5,6 +5,8 @@ import {
   deployReference,
   matchingReceipt,
   scaleCommands,
+  readinessUrl,
+  routeFailureMessage,
 } from "./deployment.mjs?v=20261106-4";
 import {
   fresh,
@@ -1006,9 +1008,13 @@ function renderDeployment() {
   if (route) {
     $("open-route").href = route;
     $("open-route").removeAttribute("aria-disabled");
+    $("open-readiness").href = readinessUrl(route);
+    $("open-readiness").removeAttribute("aria-disabled");
   } else {
     $("open-route").removeAttribute("href");
     $("open-route").setAttribute("aria-disabled", "true");
+    $("open-readiness").removeAttribute("href");
+    $("open-readiness").setAttribute("aria-disabled", "true");
   }
   const recorded = settings.scale,
     panelScale = $("scale-evidence");
@@ -1175,7 +1181,7 @@ async function directScale(replicas) {
 $("direct-scale-out").onclick = () => directScale(100);
 $("direct-scale-in").onclick = () => directScale(1);
 $("check-route").onclick = async () => {
-  const address = consoleLink(session.deployment.applicationUrl);
+  const address = readinessUrl(session.deployment.applicationUrl);
   if (!address) return tell("Enter an HTTPS application Route URL first.");
   const button = $("check-route");
   button.disabled = true;
@@ -1183,22 +1189,32 @@ $("check-route").onclick = async () => {
     timer = setTimeout(() => controller.abort(), 5000),
     start = performance.now();
   try {
-    const url = new URL(address);
-    url.pathname = url.pathname.replace(/\/$/, "") + "/q/health/ready";
-    url.search = "";
-    url.hash = "";
-    const response = await fetch(url, {
-        signal: controller.signal,
-        cache: "no-store",
-        mode: "cors",
-        credentials: "omit",
-      }),
+    const response = await fetch(address, {
+      redirect: "error",
+      signal: controller.signal,
+      cache: "no-store",
+      mode: "cors",
+      credentials: "omit",
+    });
+    let data;
+    try {
       data = await response.json();
+    } catch (error) {
+      if (error.name === "AbortError") throw error;
+    }
+    if (!data || !["UP", "DOWN"].includes(data.status)) {
+      $("route-status").textContent =
+        `HTTPS endpoint responded with HTTP ${response.status}, but did not return a valid readiness response (UP/DOWN). Verify ${address} and check for a router error or login page. Readiness is unavailable; this is not a benchmark failure.`;
+      return;
+    }
     $("route-status").textContent =
-      `Route observation ${url.origin}${url.pathname} at ${new Date().toISOString()}: HTTP ${response.status}, readiness ${data.status || "unknown"}, browser HTTP ${(performance.now() - start).toFixed(1)} ms. One routed response does not establish that all replicas are ready.`;
+      `HTTPS Route observation ${address} at ${new Date().toISOString()}: HTTP ${response.status}, readiness ${data.status}, browser HTTP ${(performance.now() - start).toFixed(1)} ms. One routed response does not establish that all replicas are ready.`;
   } catch (error) {
-    $("route-status").textContent =
-      `Route could not be checked: ${error.message}. This may be network, TLS or CORS; it is not a benchmark failure. Open the Route directly or check the image's allowed dashboard origin.`;
+    $("route-status").textContent = routeFailureMessage(
+      error,
+      address,
+      location.origin,
+    );
   } finally {
     clearTimeout(timer);
     button.disabled = false;

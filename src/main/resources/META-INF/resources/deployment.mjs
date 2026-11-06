@@ -33,6 +33,30 @@ export function consoleLink(value) {
     return null;
   }
 }
+export function readinessUrl(value) {
+  const address = consoleLink(value);
+  if (!address) return null;
+  const url = new URL(address);
+  const path = url.pathname.replace(/\/$/, "");
+  url.pathname = path.endsWith("/q/health/ready")
+    ? path
+    : path + "/q/health/ready";
+  url.search = "";
+  url.hash = "";
+  return url.href;
+}
+export function routeFailureMessage(error, address, dashboardOrigin) {
+  if (error?.name === "AbortError")
+    return "HTTPS readiness check timed out after 5 seconds. Open the HTTPS readiness endpoint directly and check Route availability. Readiness is unavailable; this is not a benchmark failure.";
+  const crossOrigin = new URL(address).origin !== dashboardOrigin;
+  return (
+    "The browser could not read the HTTPS readiness endpoint. Open it in a new tab and check certificate trust and connectivity. " +
+    (crossOrigin
+      ? `If it works there, allow this dashboard origin in the deployed app's CORS settings: ${dashboardOrigin}, then redeploy. `
+      : "Check for a redirect or login page as well. ") +
+    "The browser did not expose the exact cause; readiness is unavailable. This is not a benchmark failure."
+  );
+}
 export function deploymentCommands(settings) {
   if (
     !taggedImage(settings.image) ||
