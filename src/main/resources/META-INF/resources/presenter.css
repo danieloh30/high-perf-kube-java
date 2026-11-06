@@ -746,6 +746,13 @@ body[data-phase="3"] header {
 .cluster-note strong {
   display: inline;
 }
+.cluster-note mark {
+  background: color-mix(in srgb, var(--native) 16%, transparent);
+  color: var(--native);
+  font-weight: 750;
+  padding: 1px 4px;
+  border-radius: 4px;
+}
 .cluster-note details {
   border: 0;
   margin: 0;

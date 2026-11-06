@@ -38,16 +38,19 @@
             >
           </summary>
           <p>
-            CPU limits can throttle this single-threaded computation; CPU
-            requests are not a speed guarantee. Node hardware/contention,
-            architecture, JIT/GC and heap settings can also differ. Server
-            computation is elapsed wall time, so throttling can increase it;
-            Route/TLS/network latency adds to browser HTTP only. Actual
-            quota/throttling was not collected. Check pod resources and CPU
+            <mark>CPU limits can throttle</mark> this single-threaded
+            computation;
+            <strong>CPU requests are not a speed guarantee.</strong> Node
+            hardware/contention, architecture,
+            <strong>JIT/GC and heap settings</strong> can also differ.
+            <strong>Server computation is elapsed wall time</strong>, so
+            throttling can increase it; Route/TLS/network latency adds to
+            <strong>browser HTTP only</strong>. Actual quota/throttling was
+            <strong>not collected</strong>. Check pod resources and CPU
             throttling metrics before naming a cause. With multiple replicas,
-            use one pod (for example, port-forward to a specific pod) for
-            benchmarking: a Route may reach different process IDs and the
-            dashboard will reject mixed-process batches.
+            <mark>use one pod</mark> (for example, port-forward to a specific
+            pod) for benchmarking: a Route may reach different process IDs and
+            the dashboard will <strong>reject mixed-process batches</strong>.
           </p>
         </details>
       </aside>

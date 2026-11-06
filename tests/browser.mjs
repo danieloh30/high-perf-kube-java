@@ -657,6 +657,10 @@ try {
   await e.locator("#cluster-note").waitFor({ state: "visible" });
   assert.match(await e.locator("#cluster-note").textContent(), /throttl/);
   assert.match(await e.locator("#cluster-note").textContent(), /one pod/);
+  assert.deepEqual(await e.locator("#cluster-note mark").allTextContents(), [
+    "CPU limits can throttle",
+    "use one pod",
+  ]);
   await e
     .locator("#scale-out-command")
     .evaluate((n) => (n.closest("details").open = false));

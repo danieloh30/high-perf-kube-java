@@ -53,7 +53,7 @@ cluster scale is performed by repository tests.
 - Compare explains recursive Fibonacci versus the sieve's loops, array writes, boxing and allocation.
   Workload-specific AOT/JIT explanations are labeled as hypotheses, not profiles.
 - Snapshot phase selection remains stable during metric polling.
-- Kubernetes detection adds a note about quotas/throttling, node differences, HTTP overhead
+- Kubernetes detection adds a note with highlighted keywords about quotas/throttling, node differences, HTTP overhead
   and the need to benchmark one pod when multiple replicas are present.
 - Pre-load and post-load snapshots remain separate; missed baselines stay explicit.
 - Comparisons check input and output agreement; server and browser durations have
