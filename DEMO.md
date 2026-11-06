@@ -248,17 +248,18 @@ Namespace and Deployment both default to `high-perf-java`. Override either when 
 
 The older `--replicas 100` syntax remains supported.
 
-**Direct buttons (optional, local dashboard only):** after deploying, log in and
-check the intended cluster from your local terminal. No cluster credentials go into the SPA:
+**Direct buttons (local dashboard only):** after deploying, use a valid local
+`oc login` session (skip login if already authenticated). Checking the current
+context is optional and only displays which kubeconfig context is selected. No cluster credentials go into the SPA:
 
 ```sh
 oc login <cluster-api>
 oc whoami
-oc config current-context
+oc config current-context  # optional: displays the selected context; does not log in
 ./demo.sh down
-DEMO_CLUSTER_CONTROL=true ./demo.sh up
+./demo.sh up
 # Optional target overrides before up:
-# DEMO_CLUSTER_CONTROL=true DEMO_NAMESPACE=my-project DEMO_DEPLOYMENT=my-app ./demo.sh up
+# DEMO_NAMESPACE=my-project DEMO_DEPLOYMENT=my-app ./demo.sh up
 ```
 
 In **06 Kubernetes → Scale exercise**, click **Check local cluster control**.
@@ -270,7 +271,9 @@ Deployment. Match its namespace/name to enable the buttons. Restart the local
 dashboard after changing kubeconfig context or credentials. Login needs permissions
 to read Deployments, ReplicaSets and pods and update `deployments/scale`.
 
-Controls default to disabled and require loopback, a same-origin request and an
+`demo.sh up` enables local control by default. To opt out, stop the local process
+and start with `DEMO_CLUSTER_CONTROL=false ./demo.sh up`. Direct Java launches
+still default to disabled. Controls require loopback, a same-origin request and an
 ephemeral capability token that is not exported. They stay disabled inside a
 Kubernetes pod, including through port-forwarding. Keep the local dashboard open
 for control and use a separate Route tab to show the deployed app. A browser

@@ -117,6 +117,7 @@ class DemoTests(unittest.TestCase):
         self.d.up()
         first=self.d.process()
         self.assertEqual(first['runtime'],'jvm')
+        self.assertIn('-Ddemo.cluster-control.enabled=true',first['command'])
         self.d.up()
         self.assertEqual(self.d.process()['pid'],first['pid'])
         with patch.dict(os.environ,{'DEMO_PORT':'8081','DEMO_XMX':'512m'}):
@@ -263,7 +264,14 @@ class DemoTests(unittest.TestCase):
                 if expected is None:image.assert_not_called()
                 else:image.assert_called_once_with(*expected)
 
-    def test_cluster_control_is_opt_in_and_target_is_configured_at_launch(self):
+    def test_cluster_control_defaults_on_can_opt_out_and_target_is_configured_at_launch(self):
+        with patch.dict(os.environ,{}):
+            for key in ['DEMO_CLUSTER_CONTROL','DEMO_NAMESPACE','DEMO_DEPLOYMENT']:
+                os.environ.pop(key,None)
+            settings=self.d.settings()
+            self.assertTrue(settings['cluster_control'])
+            self.assertEqual(settings['namespace'],'high-perf-java')
+            self.assertEqual(settings['deployment'],'high-perf-java')
         with patch.dict(os.environ,{'DEMO_CLUSTER_CONTROL':'false'}):
             self.assertNotIn('cluster_control',self.d.settings())
         with patch.dict(os.environ,{'DEMO_CLUSTER_CONTROL':'true','DEMO_NAMESPACE':'my-project','DEMO_DEPLOYMENT':'my-app'}):

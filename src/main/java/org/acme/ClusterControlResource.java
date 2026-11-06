@@ -19,7 +19,7 @@ import java.time.Instant;
 import java.util.*;
 import java.util.function.Consumer;
 
-/** Opt-in, loopback-only Kubernetes API control. Never executes a shell or accepts credentials. */
+/** Launcher-enabled, loopback-only Kubernetes API control. Never executes a shell or accepts credentials. */
 @Path("/demo/cluster-control")
 @Produces(MediaType.APPLICATION_JSON)
 @Consumes(MediaType.APPLICATION_JSON)
@@ -58,7 +58,7 @@ public class ClusterControlResource {
             URI server = URI.create(config.getMasterUrl());
             result.put("api_server", server.getScheme() + "://" + server.getHost() + (server.getPort()==-1 ? "" : ":" + server.getPort()));
             result.put("token", token); result.put("running", running); result.put("observation", observation);
-        } else result.put("reason", "Direct scaling is disabled. On your local machine run oc login, then DEMO_CLUSTER_CONTROL=true ./demo.sh up. Control is unavailable from a cluster-hosted dashboard.");
+        } else result.put("reason", "Direct scaling is disabled. On your local machine run oc login, then ./demo.sh down and ./demo.sh up (local controls default on). Control is unavailable from a cluster-hosted dashboard.");
         return Response.ok(result).header("Cache-Control", "no-store").build();
     }
     public record ScaleRequest(int replicas) {}

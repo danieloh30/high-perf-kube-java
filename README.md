@@ -72,9 +72,10 @@ cluster scale is performed by repository tests.
   default to `high-perf-java`; override with `--namespace` / `--deployment`. The SPA displays
   timestamped observations.
 - Optional direct buttons use the approved `quarkus-kubernetes-client` extension and local
-  kubeconfig after `oc login`: `DEMO_CLUSTER_CONTROL=true ./demo.sh up`. Only the locally
+  kubeconfig after `oc login`: `./demo.sh up` enables local controls by default. Only the locally
   configured namespace/Deployment and targets 1/100 are permitted. The controller is
-  disabled by default, restricted to same-origin loopback requests with an ephemeral token,
+  restricted to same-origin loopback requests with an ephemeral token; opt out with
+  `DEMO_CLUSTER_CONTROL=false ./demo.sh up`. It stays disabled for direct Java launches
   and unavailable in Kubernetes. It never executes shell commands or accepts browser credentials.
 
 Sessions use localStorage key `runtime-lab.session.v2`; v1 sessions migrate with
@@ -137,6 +138,6 @@ Logical follow-up: rehearse the packaged pair on the presentation machine, then
 collect external Kubernetes readiness and controlled load-test evidence if needed.
 
 Direct controller endpoints: `GET /demo/cluster-control` (capability/status) and
-`POST /demo/cluster-control/scale` (opt-in local scale request). Observations retain
+`POST /demo/cluster-control/scale` (launcher-enabled local scale request). Observations retain
 request-to-convergence boundaries, failures and timeouts. See the
 [Quarkus Kubernetes client guide](https://quarkus.io/guides/kubernetes-client).

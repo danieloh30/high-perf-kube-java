@@ -142,7 +142,7 @@ class Demo:
         if not all(re.fullmatch(r'[1-9][0-9]*[kKmMgG]', v) for v in [xms, xmx]):
             raise DemoError('DEMO_XMS and DEMO_XMX must be sizes such as 64m and 256m.')
         settings = dict(port=port, cpus=cpus, xms=xms, xmx=xmx)
-        if os.environ.get('DEMO_CLUSTER_CONTROL', '').lower() == 'true':
+        if os.environ.get('DEMO_CLUSTER_CONTROL', 'true').lower() == 'true':
             namespace = os.environ.get('DEMO_NAMESPACE', DEFAULT_DEPLOYMENT)
             deployment = os.environ.get('DEMO_DEPLOYMENT', DEFAULT_DEPLOYMENT)
             if not re.fullmatch(r'[a-z0-9](?:[-a-z0-9]*[a-z0-9])?', namespace) or not re.fullmatch(r'[a-z0-9](?:[-a-z0-9.]*[a-z0-9])?', deployment):

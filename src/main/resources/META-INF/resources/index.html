@@ -371,19 +371,22 @@
                 <details>
                   <summary>
                     Login locally first:
-                    <code>oc login &lt;cluster-api&gt;</code>, then enable
-                    control
+                    <code>oc login &lt;cluster-api&gt;</code>, then start the
+                    local dashboard
                   </summary>
                   <p>
                     First log in from your local terminal with
                     <code>oc login &lt;cluster-api&gt;</code>, verify
-                    <code>oc whoami</code> and
-                    <code>oc config current-context</code>, then start with
-                    <code>DEMO_CLUSTER_CONTROL=true ./demo.sh up</code>. If
-                    already running, use <code>./demo.sh down</code> first.
-                    Namespace and Deployment default to
-                    <code>high-perf-java</code>; configure local overrides with
-                    <code>DEMO_NAMESPACE</code> /
+                    <code>oc whoami</code>, then start with
+                    <code>./demo.sh up</code>. Local control is enabled by
+                    default; use
+                    <code>DEMO_CLUSTER_CONTROL=false ./demo.sh up</code> to
+                    disable it. <code>oc config current-context</code> is an
+                    optional read-only check of the selected context, not a
+                    login requirement. If already running, use
+                    <code>./demo.sh down</code> first. Namespace and Deployment
+                    default to <code>high-perf-java</code>; configure local
+                    overrides with <code>DEMO_NAMESPACE</code> /
                     <code>DEMO_DEPLOYMENT</code> before starting. These buttons
                     change the configured Deployment through the Kubernetes
                     client API, not a shell. They are disabled on the
