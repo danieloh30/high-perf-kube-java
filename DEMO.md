@@ -232,8 +232,10 @@ before other cluster overhead. These are planning examples, not configured value
 or measured data in the SPA. Check your actual pod resources and scheduling.
 Pre-pull images or explicitly explain cold image pulls if those are part of the story.
 
-Return to **06 Kubernetes**, verify the project and Deployment name, and expand
-**Scale exercise: 1 → 100 → 1**. Use the copy buttons or run:
+Return to **06 Kubernetes** and verify the project and Deployment name. The
+**Scale out. Observe. Scale back.** panel shows direct controls by default.
+For a terminal fallback, expand **Optional: use terminal commands instead**, use
+the copy buttons, or run:
 
 ```sh
 ./demo.sh scale 100
@@ -262,7 +264,7 @@ oc config current-context  # optional: displays the selected context; does not l
 # DEMO_NAMESPACE=my-project DEMO_DEPLOYMENT=my-app ./demo.sh up
 ```
 
-In **06 Kubernetes → Scale exercise**, click **Check local cluster control**.
+In **06 Kubernetes → Scale out. Observe. Scale back.**, click **Check local cluster control**.
 Verify the configured target, context and API server, then **Scale to 100 now** / **Scale to 1 now** and
 confirm the exact change. These buttons use `quarkus-kubernetes-client` with your
 local kubeconfig, not `oc` subprocesses. Only one observation runs at a time.

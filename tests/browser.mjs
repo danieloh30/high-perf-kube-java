@@ -431,7 +431,12 @@ for (const [benchmark, url] of [
     return route.fulfill({
       json: {
         process_id: processId(),
-        duration_ns: evidenceRuntime === "jvm" ? (benchmark === "primes" ? 400000 : 1000000) : 800000,
+        duration_ns:
+          evidenceRuntime === "jvm"
+            ? benchmark === "primes"
+              ? 400000
+              : 1000000
+            : 800000,
         ...(benchmark === "fib"
           ? { input_n: 40, result: 102334155 }
           : { limit: 1000000, prime_count: 78498, largest_prime: 999983 }),
@@ -596,6 +601,11 @@ try {
     /demo\.sh scale 100/,
   );
   assert.match(await e.locator("#scale-evidence").textContent(), /1 → 100/);
+  assert.equal(
+    await e.locator("#scale-terminal").evaluate((n) => n.open),
+    false,
+  );
+  assert.equal(await e.locator("#direct-scale-out").isVisible(), true);
   await e
     .locator("#scale-out-command")
     .evaluate((n) => (n.closest("details").open = true));
@@ -631,6 +641,18 @@ try {
     ).includes("TEST-ONLY-CAPABILITY"),
     false,
   );
+  await e.locator("#scale-terminal").evaluate((n) => (n.open = false));
+  assert.match(
+    await e.locator("#control-state").textContent(),
+    /Controller ready/,
+  );
+  await e
+    .locator("#scaling-panel")
+    .screenshot({ path: "test-results/scaling-panel-dark-test-fixture.png" });
+  await e.getByRole("button", { name: "Light theme", exact: true }).click();
+  await e
+    .locator("#scaling-panel")
+    .screenshot({ path: "test-results/scaling-panel-light-test-fixture.png" });
   clusterEnvironment = true;
   await e.locator("#cluster-note").waitFor({ state: "visible" });
   assert.match(await e.locator("#cluster-note").textContent(), /throttl/);
@@ -638,7 +660,7 @@ try {
   await e
     .locator("#scale-out-command")
     .evaluate((n) => (n.closest("details").open = false));
-  await e.evaluate(() => scrollTo(0,0));
+  await e.evaluate(() => scrollTo(0, 0));
   await e.screenshot({ path: "test-results/openshift-test-fixture.png" });
   await e.reload();
   await e.getByText("Connected · live", { exact: true }).waitFor();

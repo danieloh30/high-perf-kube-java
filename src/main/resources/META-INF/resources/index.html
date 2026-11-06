@@ -352,64 +352,114 @@
               >Open deployed app ↗</a
             >
             <p id="route-status">Route not checked.</p>
-            <details>
-              <summary>Scale exercise: 1 → 100 → 1</summary>
-              <p>
-                Prepare capacity, quota and resource settings before the talk.
-                Copy a command and run it in the terminal after deploying. The
-                observer records API polling and pod termination, not a pure
-                runtime startup time.
-              </p>
-              <pre id="scale-out-command"></pre>
-              <button id="copy-scale-out">Copy scale to 100</button>
-              <pre id="scale-in-command"></pre>
-              <button id="copy-scale-in">Copy scale to 1</button>
-              <div class="direct-scale">
-                <strong
-                  >Optional: scale directly from this local dashboard</strong
-                >
-                <details>
-                  <summary>
-                    Login locally first:
-                    <code>oc login &lt;cluster-api&gt;</code>, then start the
-                    local dashboard
-                  </summary>
-                  <p>
-                    First log in from your local terminal with
-                    <code>oc login &lt;cluster-api&gt;</code>, verify
-                    <code>oc whoami</code>, then start with
-                    <code>./demo.sh up</code>. Local control is enabled by
-                    default; use
-                    <code>DEMO_CLUSTER_CONTROL=false ./demo.sh up</code> to
-                    disable it. <code>oc config current-context</code> is an
-                    optional read-only check of the selected context, not a
-                    login requirement. If already running, use
-                    <code>./demo.sh down</code> first. Namespace and Deployment
-                    default to <code>high-perf-java</code>; configure local
-                    overrides with <code>DEMO_NAMESPACE</code> /
-                    <code>DEMO_DEPLOYMENT</code> before starting. These buttons
-                    change the configured Deployment through the Kubernetes
-                    client API, not a shell. They are disabled on the
-                    cluster-hosted dashboard. No credentials are entered here.
-                    Restart the local dashboard after changing kubeconfig
-                    context or credentials.
-                  </p>
-                </details>
-                <button id="connect-control">
-                  Check local cluster control
-                </button>
-                <p id="control-status" role="status">
-                  Local cluster control not checked.
-                </p>
-                <button id="direct-scale-out" disabled>Scale to 100 now</button>
-                <button id="direct-scale-in" disabled>Scale to 1 now</button>
-              </div>
-              <div id="scale-evidence"></div>
-            </details>
             <h3>External observations</h3>
             <div id="observations"></div>
           </article>
         </div>
+        <article id="scaling-panel" class="scaling-panel">
+          <div class="scale-heading">
+            <div>
+              <span class="concept-label native"
+                >KUBERNETES · SCALE EXERCISE</span
+              >
+              <h2>Scale out. Observe. Scale back.</h2>
+              <p>One Deployment. Deliberate changes. Recorded convergence.</p>
+            </div>
+            <span id="control-state" class="scale-badge">Not checked</span>
+          </div>
+          <div class="scale-workspace">
+            <div class="direct-scale" data-state="unchecked">
+              <h3>Control the demo</h3>
+              <p class="footnote">
+                Prepare capacity and quota for 100 replicas before scaling.
+              </p>
+              <button id="connect-control">Check local cluster control</button>
+              <p id="control-status" role="status">
+                Local cluster control not checked.
+              </p>
+              <div class="scale-actions">
+                <button
+                  id="direct-scale-out"
+                  aria-label="Scale to 100 now"
+                  class="scale-out"
+                  disabled
+                >
+                  <span class="scale-action-number">↗ 100</span
+                  ><span>Scale to 100 now</span>
+                </button>
+                <button
+                  id="direct-scale-in"
+                  aria-label="Scale to 1 now"
+                  class="scale-in"
+                  disabled
+                >
+                  <span class="scale-action-number">↙ 1</span
+                  ><span>Scale to 1 now</span>
+                </button>
+              </div>
+              <details class="connection-details">
+                <summary>Cluster connection details</summary>
+                <dl>
+                  <dt>Deployment</dt>
+                  <dd id="controller-target">Not checked</dd>
+                  <dt>Context</dt>
+                  <dd id="controller-context">Not checked</dd>
+                  <dt>API server</dt>
+                  <dd id="controller-server">Not checked</dd>
+                </dl>
+              </details>
+              <details>
+                <summary>
+                  Login locally first:
+                  <code>oc login &lt;cluster-api&gt;</code>, then start the
+                  local dashboard
+                </summary>
+                <p>
+                  First log in from your local terminal with
+                  <code>oc login &lt;cluster-api&gt;</code>, verify
+                  <code>oc whoami</code>, then start with
+                  <code>./demo.sh up</code>. Local control is enabled by
+                  default; use
+                  <code>DEMO_CLUSTER_CONTROL=false ./demo.sh up</code> to
+                  disable it. <code>oc config current-context</code> is an
+                  optional read-only check of the selected context, not a login
+                  requirement. If already running, use
+                  <code>./demo.sh down</code> first. Namespace and Deployment
+                  default to <code>high-perf-java</code>; configure local
+                  overrides with <code>DEMO_NAMESPACE</code> /
+                  <code>DEMO_DEPLOYMENT</code> before starting. These buttons
+                  change the configured Deployment through the Kubernetes client
+                  API, not a shell. They are disabled on the cluster-hosted
+                  dashboard. No credentials are entered here. Restart the local
+                  dashboard after changing kubeconfig context or credentials.
+                </p>
+              </details>
+            </div>
+            <div
+              id="scale-evidence"
+              class="scale-result"
+              aria-live="polite"
+            ></div>
+          </div>
+          <details id="scale-terminal" class="terminal-fallback">
+            <summary>Optional: use terminal commands instead</summary>
+            <p>
+              Use your authenticated local CLI after deploying. These commands
+              change the same named Deployment and record API polling and pod
+              termination, not pure runtime startup.
+            </p>
+            <div class="terminal-commands">
+              <div>
+                <pre id="scale-out-command"></pre>
+                <button id="copy-scale-out">Copy scale to 100</button>
+              </div>
+              <div>
+                <pre id="scale-in-command"></pre>
+                <button id="copy-scale-in">Copy scale to 1</button>
+              </div>
+            </div>
+          </details>
+        </article>
       </section>
       <details id="details">
         <summary>

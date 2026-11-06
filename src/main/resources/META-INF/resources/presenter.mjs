@@ -971,8 +971,32 @@ function renderDeployment() {
     busy || !connected || !controlMatches || clusterControl.running;
   if (clusterControl)
     $("control-status").textContent = clusterControl.enabled
-      ? `Local controller: ${clusterControl.namespace}/${clusterControl.deployment} · context ${clusterControl.context || "unknown"} · API ${clusterControl.api_server || "unknown"} · ${clusterControl.running ? "observing; actions locked" : "ready"}${controlMatches ? "" : ". Form target differs; match the configured local target to enable buttons."}`
+      ? `${clusterControl.namespace}/${clusterControl.deployment} · ${clusterControl.running ? "Observing convergence; actions locked" : "Local controller ready"}${controlMatches ? "" : ". Form target differs; match the configured local target to enable buttons."}`
       : clusterControl.reason;
+  $("controller-target").textContent = clusterControl
+    ? `${clusterControl.namespace}/${clusterControl.deployment}`
+    : "Not checked";
+  $("controller-context").textContent =
+    clusterControl?.context || "Not checked / unknown";
+  $("controller-server").textContent =
+    clusterControl?.api_server || "Not checked / unknown";
+  const controlState = !clusterControl
+    ? "unchecked"
+    : !clusterControl.enabled
+      ? "unavailable"
+      : clusterControl.running
+        ? "observing"
+        : controlMatches
+          ? "ready"
+          : "mismatch";
+  $("control-state").textContent = {
+    unchecked: "Not checked",
+    unavailable: "Unavailable",
+    observing: "Observing",
+    ready: "Controller ready",
+    mismatch: "Target differs",
+  }[controlState];
+  $("control-state").dataset.state = controlState;
   $("scale-out-command").textContent =
     scaling?.out || "Enter valid project and Deployment names.";
   $("scale-in-command").textContent = scaling?.inside || "";
@@ -988,18 +1012,45 @@ function renderDeployment() {
   }
   const recorded = settings.scale,
     panelScale = $("scale-evidence");
+  const traceWasOpen = panelScale.querySelector("details")?.open;
   panelScale.replaceChildren();
   if (recorded) {
-    panelScale.append(
+    const resultHeading = el("div", "", "scale-result-heading");
+    const badge = el("span", recorded.status || "unknown", "scale-badge");
+    badge.dataset.state = recorded.status || "unknown";
+    resultHeading.append(
+      el("span", "RECORDED OBSERVATION", "concept-label"),
+      badge,
+    );
+    const metrics = el("div", "", "scale-result-metrics");
+    const direction = el("div", "", "scale-result-direction");
+    direction.append(
       el(
-        "h3",
-        `Recorded scale: ${recorded.from_replicas ?? "unknown"} → ${recorded.target} · ${recorded.status}`,
+        "strong",
+        `${recorded.from_replicas ?? "?"} → ${recorded.target ?? "?"}`,
       ),
+      el("span", "replicas"),
+    );
+    const duration = el("div", "", "scale-result-duration");
+    duration.append(
+      el(
+        "strong",
+        numeric(recorded.duration_ms)
+          ? fmt(recorded.duration_ms / 1000, " s")
+          : "Unavailable",
+      ),
+      el("span", "request → observed convergence"),
+    );
+    metrics.append(direction, duration);
+    panelScale.append(
+      resultHeading,
+      metrics,
+      el("p", `${recorded.namespace}/${recorded.deployment}`, "scale-target"),
       el(
         "p",
-        `${recorded.namespace}/${recorded.deployment} · ${numeric(recorded.duration_ms) ? fmt(recorded.duration_ms / 1000, " s") : "target convergence not measured"}`,
+        `Recorded at ${recorded.timestamp || "unknown time"}`,
+        "footnote",
       ),
-      el("p", `${recorded.boundary} · ${recorded.timestamp}`, "footnote"),
     );
     if (recorded.reason) panelScale.append(el("p", recorded.reason));
     const trace = el(
@@ -1011,7 +1062,15 @@ function renderDeployment() {
         )
         .join("\n"),
     );
-    panelScale.append(trace);
+    const details = el("details", "");
+    details.open = !!traceWasOpen;
+    details.append(
+      el("summary", "Observation timeline & measurement boundary"),
+      el("p", recorded.source || "Source unavailable", "footnote"),
+      el("p", recorded.boundary || "Boundary unavailable", "footnote"),
+      trace,
+    );
+    panelScale.append(details);
     panelScale.append(
       el(
         "p",
@@ -1023,7 +1082,7 @@ function renderDeployment() {
     panelScale.append(
       el(
         "p",
-        "Not collected. Run the scale command after deployment. API polling, scheduling, image pull, probes and termination all contribute to the observation.",
+        "No scale observation yet. Check local cluster control, then choose a target after deployment. Scheduling, image pulls, probes, API polling and termination contribute to the measured time.",
       ),
     );
 }
@@ -1075,6 +1134,7 @@ $("connect-control").onclick = async () => {
     await checkClusterControl();
   } catch (e) {
     clusterControl = null;
+    renderDeployment();
     $("control-status").textContent =
       `Local control unavailable: ${e.message}. Check login, enable it locally, or use the copy commands.`;
   }

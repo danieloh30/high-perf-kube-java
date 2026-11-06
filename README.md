@@ -71,7 +71,9 @@ cluster scale is performed by repository tests.
   Ready/Available convergence through the authenticated oc CLI. Namespace and Deployment
   default to `high-perf-java`; override with `--namespace` / `--deployment`. The SPA displays
   timestamped observations.
-- Optional direct buttons use the approved `quarkus-kubernetes-client` extension and local
+- Direct scaling is the default Kubernetes panel, with prominent 100/1 actions, controller
+  status and a recorded convergence card. Terminal commands start folded as an optional fallback.
+- Direct buttons use the approved `quarkus-kubernetes-client` extension and local
   kubeconfig after `oc login`: `./demo.sh up` enables local controls by default. Only the locally
   configured namespace/Deployment and targets 1/100 are permitted. The controller is
   restricted to same-origin loopback requests with an ephemeral token; opt out with
