@@ -29,6 +29,28 @@
         <button class="primary" id="primary"></button>
       </section>
       <div id="notice" role="status" aria-live="polite"></div>
+      <aside id="cluster-note" class="cluster-note" hidden>
+        <details>
+          <summary>
+            <strong
+              >Kubernetes environment detected · why cluster timings may
+              differ</strong
+            >
+          </summary>
+          <p>
+            CPU limits can throttle this single-threaded computation; CPU
+            requests are not a speed guarantee. Node hardware/contention,
+            architecture, JIT/GC and heap settings can also differ. Server
+            computation is elapsed wall time, so throttling can increase it;
+            Route/TLS/network latency adds to browser HTTP only. Actual
+            quota/throttling was not collected. Check pod resources and CPU
+            throttling metrics before naming a cause. With multiple replicas,
+            use one pod (for example, port-forward to a specific pod) for
+            benchmarking: a Route may reach different process IDs and the
+            dashboard will reject mixed-process batches.
+          </p>
+        </details>
+      </aside>
       <section id="start" class="phase">
         <div class="metrics" id="metrics"></div>
         <div class="callout">
@@ -102,7 +124,10 @@
           <b>What these computation results mean</b>
           <p id="computation-insight"></p>
           <details class="insight-explainer">
-            <summary>Understand the tradeoffs</summary>
+            <summary>
+              Why Fibonacci and prime sieve can favor different runtimes
+            </summary>
+            <p id="insight-workload"></p>
             <div class="concept-grid">
               <article>
                 <span class="concept-label native">AOT · NATIVE IMAGE</span>
@@ -139,7 +164,6 @@
               not establish <strong>steady state</strong>, sustained throughput,
               p99 or an SLO.
             </p>
-            <p id="insight-workload"></p>
             <a
               href="https://quarkus.io/guides/building-native-image"
               target="_blank"
@@ -162,8 +186,11 @@
             <span class="concept-label native">NO DOCKERFILE</span>
             <h3>Quarkus knows the app.</h3>
             <p>
-              The existing <code>quarkus-container-image-jib</code> extension
-              packages the JVM application as an image.
+              The existing
+              <mark class="extension-highlight"
+                ><code>quarkus-container-image-jib</code></mark
+              >
+              extension packages the JVM application as an image.
             </p>
           </article>
           <article class="card">
@@ -337,6 +364,43 @@
               <button id="copy-scale-out">Copy scale to 100</button>
               <pre id="scale-in-command"></pre>
               <button id="copy-scale-in">Copy scale to 1</button>
+              <div class="direct-scale">
+                <strong
+                  >Optional: scale directly from this local dashboard</strong
+                >
+                <details>
+                  <summary>
+                    Login locally first:
+                    <code>oc login &lt;cluster-api&gt;</code>, then enable
+                    control
+                  </summary>
+                  <p>
+                    First log in from your local terminal with
+                    <code>oc login &lt;cluster-api&gt;</code>, verify
+                    <code>oc whoami</code> and
+                    <code>oc config current-context</code>, then start with
+                    <code>DEMO_CLUSTER_CONTROL=true ./demo.sh up</code>. If
+                    already running, use <code>./demo.sh down</code> first.
+                    Namespace and Deployment default to
+                    <code>high-perf-java</code>; configure local overrides with
+                    <code>DEMO_NAMESPACE</code> /
+                    <code>DEMO_DEPLOYMENT</code> before starting. These buttons
+                    change the configured Deployment through the Kubernetes
+                    client API, not a shell. They are disabled on the
+                    cluster-hosted dashboard. No credentials are entered here.
+                    Restart the local dashboard after changing kubeconfig
+                    context or credentials.
+                  </p>
+                </details>
+                <button id="connect-control">
+                  Check local cluster control
+                </button>
+                <p id="control-status" role="status">
+                  Local cluster control not checked.
+                </p>
+                <button id="direct-scale-out" disabled>Scale to 100 now</button>
+                <button id="direct-scale-in" disabled>Scale to 1 now</button>
+              </div>
               <div id="scale-evidence"></div>
             </details>
             <h3>External observations</h3>

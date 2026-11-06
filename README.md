@@ -1,7 +1,7 @@
 # Runtime Lab: JVM versus Native Image
 
 A presentation-ready SPA served by the existing Quarkus application. The guided
-story is **Start → Load → Switch runtime → Compare → Containerize → OpenShift**.
+story is **Start → Load → Switch runtime → Compare → Containerize → Kubernetes**.
 Java 25 · Quarkus 3.40.1.1 · all assets bundled locally.
 
 Start the complete local workflow from this checkout:
@@ -50,7 +50,11 @@ cluster scale is performed by repository tests.
 - Process identities on info and benchmark responses prevent results mixing after
   runtime changes or same-runtime restarts. Partial failures retain successful calls.
 - Compare highlights AOT/JIT, computation, startup and memory with readable concept cards.
-- Compare includes measured computation insights and an optional prime-sieve workload.
+- Compare explains recursive Fibonacci versus the sieve's loops, array writes, boxing and allocation.
+  Workload-specific AOT/JIT explanations are labeled as hypotheses, not profiles.
+- Snapshot phase selection remains stable during metric polling.
+- Kubernetes detection adds a note about quotas/throttling, node differences, HTTP overhead
+  and the need to benchmark one pod when multiple replicas are present.
 - Pre-load and post-load snapshots remain separate; missed baselines stay explicit.
 - Comparisons check input and output agreement; server and browser durations have
   separate boundaries. Unknown/different resource settings are visible.
@@ -66,7 +70,12 @@ cluster scale is performed by repository tests.
 - `demo.sh scale 100` (then `scale 1`) records
   Ready/Available convergence through the authenticated oc CLI. Namespace and Deployment
   default to `high-perf-java`; override with `--namespace` / `--deployment`. The SPA displays
-  timestamped observations; it has no shell or Kubernetes process-control endpoint.
+  timestamped observations.
+- Optional direct buttons use the approved `quarkus-kubernetes-client` extension and local
+  kubeconfig after `oc login`: `DEMO_CLUSTER_CONTROL=true ./demo.sh up`. Only the locally
+  configured namespace/Deployment and targets 1/100 are permitted. The controller is
+  disabled by default, restricted to same-origin loopback requests with an ephemeral token,
+  and unavailable in Kubernetes. It never executes shell commands or accepts browser credentials.
 
 Sessions use localStorage key `runtime-lab.session.v2`; v1 sessions migrate with
 legacy snapshots labeled as having unknown phase. Export before clearing
@@ -126,3 +135,8 @@ dependency is required:
 
 Logical follow-up: rehearse the packaged pair on the presentation machine, then
 collect external Kubernetes readiness and controlled load-test evidence if needed.
+
+Direct controller endpoints: `GET /demo/cluster-control` (capability/status) and
+`POST /demo/cluster-control/scale` (opt-in local scale request). Observations retain
+request-to-convergence boundaries, failures and timeouts. See the
+[Quarkus Kubernetes client guide](https://quarkus.io/guides/kubernetes-client).

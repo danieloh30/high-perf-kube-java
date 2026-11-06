@@ -71,6 +71,9 @@ public class PerformanceResource {
         info.put("process_rss", measurements.rss());
         info.put("container_memory", measurements.container());
         info.put("demo_evidence", evidence.read(process.processId()));
+        boolean kubernetes = System.getenv("KUBERNETES_SERVICE_HOST") != null;
+        info.put("execution_environment", Map.of("mode", kubernetes ? "kubernetes" : "unconfirmed",
+                "source", kubernetes ? "KUBERNETES_SERVICE_HOST is present" : "No Kubernetes service environment marker; this does not prove a host run"));
         return info;
     }
 

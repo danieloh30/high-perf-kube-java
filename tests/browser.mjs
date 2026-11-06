@@ -306,7 +306,8 @@ const evidenceContext = await browser.newContext({
   viewport: { width: 1920, height: 1080 },
 });
 const e = await evidenceContext.newPage();
-let evidenceRuntime = "jvm";
+let evidenceRuntime = "jvm",
+  clusterEnvironment = false;
 const counts = {
   jvm: { fib: 0, primes: 0 },
   "native-image": { fib: 0, primes: 0 },
@@ -317,6 +318,9 @@ await e.route("**/perf/info", (route) => {
   return route.fulfill({
     json: {
       runtime_type: evidenceRuntime,
+      execution_environment: {
+        mode: clusterEnvironment ? "kubernetes" : "unconfirmed",
+      },
       process_id: processId(),
       vm_name: "TEST FIXTURE ONLY",
       available_processors: 2,
@@ -427,7 +431,7 @@ for (const [benchmark, url] of [
     return route.fulfill({
       json: {
         process_id: processId(),
-        duration_ns: evidenceRuntime === "jvm" ? 1000000 : 800000,
+        duration_ns: evidenceRuntime === "jvm" ? (benchmark === "primes" ? 400000 : 1000000) : 800000,
         ...(benchmark === "fib"
           ? { input_n: 40, result: 102334155 }
           : { limit: 1000000, prime_count: 78498, largest_prime: 999983 }),
@@ -510,6 +514,21 @@ try {
       .evaluate((n) => n.getBoundingClientRect().bottom <= 1080),
   );
   await e.locator("#comparison details").evaluate((n) => (n.open = true));
+  await e.locator("#observation-phase").focus();
+  await e.evaluate(
+    () =>
+      (window.originalPhaseSelect =
+        document.getElementById("observation-phase")),
+  );
+  await e.waitForTimeout(2600);
+  assert.equal(
+    await e.evaluate(
+      () =>
+        window.originalPhaseSelect ===
+        document.getElementById("observation-phase"),
+    ),
+    true,
+  );
   assert.match(await e.locator("#comparison").textContent(), /TEST RSS/);
   assert.match(await e.locator("#comparison").textContent(), /TEST build log/);
   assert.match(await e.locator("#comparison").textContent(), /Not applicable/);
@@ -517,6 +536,15 @@ try {
   assert.match(
     await e.locator("#comparison").textContent(),
     /Post-load snapshot/,
+  );
+  assert.match(await e.locator("#comparison").textContent(), /34/);
+  await e.reload();
+  await e.getByText("Connected · live", { exact: true }).waitFor();
+  await e.locator("#comparison details").evaluate((n) => (n.open = true));
+  assert.equal(await e.locator("#observation-phase").inputValue(), "post-load");
+  assert.match(
+    await e.locator("#insight-workload").textContent(),
+    /recursive calls/,
   );
   await e
     .getByRole("button", { name: "05  Containerize", exact: true })
@@ -531,9 +559,13 @@ try {
     /TEST ONLY Jib build/,
   );
   assert.equal(await e.locator("body").getAttribute("data-phase"), "4");
+  assert.equal(
+    await e.locator(".extension-highlight code").textContent(),
+    "quarkus-container-image-jib",
+  );
   await e.screenshot({ path: "test-results/containerize-test-fixture.png" });
   await e
-    .getByRole("button", { name: "Continue to OpenShift", exact: true })
+    .getByRole("button", { name: "Continue to Kubernetes", exact: true })
     .click();
   await e
     .locator("#openshift-console")
@@ -564,6 +596,49 @@ try {
     /demo\.sh scale 100/,
   );
   assert.match(await e.locator("#scale-evidence").textContent(), /1 → 100/);
+  await e
+    .locator("#scale-out-command")
+    .evaluate((n) => (n.closest("details").open = true));
+  let scaleRequests = [];
+  await e.route("**/demo/cluster-control", (route) =>
+    route.fulfill({
+      json: {
+        enabled: true,
+        token: "TEST-ONLY-CAPABILITY",
+        namespace: "high-perf-java",
+        deployment: "high-perf-java",
+        running: false,
+      },
+    }),
+  );
+  await e.route("**/demo/cluster-control/scale", (route) => {
+    scaleRequests.push(route.request().postDataJSON());
+    return route.fulfill({ status: 202, json: { status: "accepted" } });
+  });
+  await e
+    .getByRole("button", { name: "Check local cluster control", exact: true })
+    .click();
+  e.on("dialog", (dialog) => dialog.accept());
+  await e
+    .getByRole("button", { name: "Scale to 100 now", exact: true })
+    .click();
+  assert.deepEqual(scaleRequests, [{ replicas: 100 }]);
+  await e.getByRole("button", { name: "Scale to 1 now", exact: true }).click();
+  assert.deepEqual(scaleRequests, [{ replicas: 100 }, { replicas: 1 }]);
+  assert.equal(
+    (
+      await e.evaluate(() => localStorage.getItem("runtime-lab.session.v2"))
+    ).includes("TEST-ONLY-CAPABILITY"),
+    false,
+  );
+  clusterEnvironment = true;
+  await e.locator("#cluster-note").waitFor({ state: "visible" });
+  assert.match(await e.locator("#cluster-note").textContent(), /throttl/);
+  assert.match(await e.locator("#cluster-note").textContent(), /one pod/);
+  await e
+    .locator("#scale-out-command")
+    .evaluate((n) => (n.closest("details").open = false));
+  await e.evaluate(() => scrollTo(0,0));
   await e.screenshot({ path: "test-results/openshift-test-fixture.png" });
   await e.reload();
   await e.getByText("Connected · live", { exact: true }).waitFor();

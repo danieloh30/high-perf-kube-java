@@ -263,6 +263,18 @@ class DemoTests(unittest.TestCase):
                 if expected is None:image.assert_not_called()
                 else:image.assert_called_once_with(*expected)
 
+    def test_cluster_control_is_opt_in_and_target_is_configured_at_launch(self):
+        with patch.dict(os.environ,{'DEMO_CLUSTER_CONTROL':'false'}):
+            self.assertNotIn('cluster_control',self.d.settings())
+        with patch.dict(os.environ,{'DEMO_CLUSTER_CONTROL':'true','DEMO_NAMESPACE':'my-project','DEMO_DEPLOYMENT':'my-app'}):
+            settings=self.d.settings()
+            self.assertTrue(settings['cluster_control'])
+            self.assertEqual(settings['namespace'],'my-project')
+            self.assertEqual(settings['deployment'],'my-app')
+        with patch.dict(os.environ,{'DEMO_CLUSTER_CONTROL':'true','DEMO_NAMESPACE':'bad;command'}):
+            with self.assertRaisesRegex(demo.DemoError,'Invalid DEMO_NAMESPACE'):
+                self.d.settings()
+
     def test_scale_cli_shortcuts_overrides_and_legacy_syntax(self):
         for flags, expected in [
             (['100'], ('high-perf-java','high-perf-java',100,300)),

@@ -256,6 +256,33 @@ export function insight(a, b, benchmark = "fib") {
       (100 * (Math.max(c.a, c.b) - Math.min(c.a, c.b))) / Math.max(c.a, c.b);
   return `${runtime} took ${percent.toFixed(1)}% less server computation time by repeated median (${stats(left).count} JVM / ${stats(right).count} native samples). Results and inputs match. Few calls; not a steady-state or SLO test.`;
 }
+export function workloadInsight(a, b, benchmark = "fib") {
+  const current = compare(a, b, "repeat", "serverNs", benchmark);
+  const algorithm =
+    benchmark === "fib"
+      ? "Fibonacci uses exponential recursive calls and integer addition, with little explicit heap allocation. Call overhead, inlining decisions and generated machine code matter. AOT code can win these short runs; the JVM's JIT may optimize differently as execution continues."
+      : "The prime sieve allocates a boolean array, repeatedly marks array elements, and builds an ArrayList<Integer> with boxing. Loop optimization, array access, allocation and GC behavior matter. The JVM's JIT can optimize hot loops and allocation paths; native code and its GC can make different tradeoffs.";
+  const other = compare(
+    a,
+    b,
+    "repeat",
+    "serverNs",
+    benchmark === "fib" ? "primes" : "fib",
+  );
+  const crossover =
+    current.ratio &&
+    other.ratio &&
+    current.ratio > 1 !== other.ratio > 1 &&
+    current.ratio !== 1 &&
+    other.ratio !== 1
+      ? " Your measured winner changes between these workloads: that is compatible with different optimization opportunities, not a contradiction."
+      : " Neither runtime is required to win every workload.";
+  return (
+    algorithm +
+    crossover +
+    " These are plausible explanations, not a diagnosed cause: no compiler, allocation or GC profile was collected. Check resource settings, repeat in reverse order on fresh processes, and profile before attributing the difference to JIT or GC."
+  );
+}
 export function settingsWarnings(a, b) {
   const warnings = [
     "revision",

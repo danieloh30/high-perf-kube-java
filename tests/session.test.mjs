@@ -11,11 +11,70 @@ import {
   compare,
   settingsWarnings,
   numeric,
+  workloadInsight,
 } from "../src/main/resources/META-INF/resources/session.mjs";
 const info = (id, runtime_type = "jvm") => ({ process_id: id, runtime_type });
 const response = (id, result = 102334155, ns = 100) => ({
   data: { process_id: id, input_n: 40, result, duration_ns: ns },
   httpMs: 2,
+});
+test("workload explanations distinguish algorithms and label inferred causes", async () => {
+  const s = fresh(),
+    a = observe(s, info("j")),
+    b = observe(s, info("n", "native-image"));
+  for (const run of [a, b]) {
+    await batch(
+      run,
+      1,
+      async () => response(run.id),
+      () => {},
+      "fib",
+    );
+    await batch(
+      run,
+      1,
+      async () => response(run.id, 102334155, run === a ? 100 : 80),
+      () => {},
+      "fib",
+    );
+    await batch(
+      run,
+      1,
+      async () => ({
+        data: {
+          process_id: run.id,
+          limit: 1000000,
+          prime_count: 78498,
+          largest_prime: 999983,
+          duration_ns: 100,
+        },
+        httpMs: 2,
+      }),
+      () => {},
+      "primes",
+    );
+    await batch(
+      run,
+      1,
+      async () => ({
+        data: {
+          process_id: run.id,
+          limit: 1000000,
+          prime_count: 78498,
+          largest_prime: 999983,
+          duration_ns: run === a ? 40 : 100,
+        },
+        httpMs: 2,
+      }),
+      () => {},
+      "primes",
+    );
+  }
+  assert.match(workloadInsight(a, b, "fib"), /recursive calls/);
+  assert.match(workloadInsight(a, b, "primes"), /boxing/);
+  assert.match(workloadInsight(a, b, "fib"), /winner changes/);
+  assert.match(workloadInsight(a, b, "primes"), /not a diagnosed cause/);
+  assert.doesNotMatch(workloadInsight(null, null, "fib"), /winner changes/);
 });
 test("complete session survives storage and export/import including theme, snapshots and costs", async () => {
   const s = fresh(),

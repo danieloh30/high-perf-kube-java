@@ -28,6 +28,7 @@ class PerformanceResourceTest {
             .body("uptime_ms",             greaterThanOrEqualTo(0))
             .body("heap_used_mb",          greaterThan(0.0f))
             .body("available_processors",  greaterThanOrEqualTo(1))
+            .body("execution_environment.mode", isOneOf("kubernetes", "unconfirmed"))
             .body("process_rss.status", isOneOf("collected", "not-collected"))
             .body("container_memory.status", isOneOf("collected", "not-collected", "not-applicable"))
             .body("demo_evidence.status", is("not-collected"));

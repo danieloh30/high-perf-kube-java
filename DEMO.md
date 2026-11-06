@@ -1,6 +1,6 @@
 # JVM versus Native Image: presenter guide
 
-The story is **observe → compute → switch → compare → containerize → OpenShift**.
+The story is **observe → compute → switch → compare → containerize → Kubernetes**.
 Native Image need not win computation. This demo shows the measured outcome,
 startup observations, memory, and the costs of producing each artifact separately.
 
@@ -190,9 +190,9 @@ a separately prepared Linux native executable and matching target architecture.
 Provision and log into your cluster before the talk. Prepare a project such as
 `high-perf-java`, resource quota/capacity and any private-registry pull credentials.
 Confirm the image platform matches the nodes. Paste the exact console/Topology
-URL for that project into **06 OpenShift**, along with project and Deployment name.
+URL for that project into **06 Kubernetes**, along with project and Deployment name.
 
-**Browser / Containerize:** click **Continue to OpenShift**, then **Copy image
+**Browser / Containerize:** click **Continue to Kubernetes**, then **Copy image
 reference**. A successfully pushed matching receipt supplies a digest-qualified
 reference; otherwise the configured tag is copied and its availability is unverified.
 
@@ -232,7 +232,7 @@ before other cluster overhead. These are planning examples, not configured value
 or measured data in the SPA. Check your actual pod resources and scheduling.
 Pre-pull images or explicitly explain cold image pulls if those are part of the story.
 
-Return to **06 OpenShift**, verify the project and Deployment name, and expand
+Return to **06 Kubernetes**, verify the project and Deployment name, and expand
 **Scale exercise: 1 → 100 → 1**. Use the copy buttons or run:
 
 ```sh
@@ -247,6 +247,35 @@ Namespace and Deployment both default to `high-perf-java`. Override either when 
 ```
 
 The older `--replicas 100` syntax remains supported.
+
+**Direct buttons (optional, local dashboard only):** after deploying, log in and
+check the intended cluster from your local terminal. No cluster credentials go into the SPA:
+
+```sh
+oc login <cluster-api>
+oc whoami
+oc config current-context
+./demo.sh down
+DEMO_CLUSTER_CONTROL=true ./demo.sh up
+# Optional target overrides before up:
+# DEMO_CLUSTER_CONTROL=true DEMO_NAMESPACE=my-project DEMO_DEPLOYMENT=my-app ./demo.sh up
+```
+
+In **06 Kubernetes → Scale exercise**, click **Check local cluster control**.
+Verify the configured target, context and API server, then **Scale to 100 now** / **Scale to 1 now** and
+confirm the exact change. These buttons use `quarkus-kubernetes-client` with your
+local kubeconfig, not `oc` subprocesses. Only one observation runs at a time.
+The target is fixed at local process launch; the form cannot grant access to another
+Deployment. Match its namespace/name to enable the buttons. Restart the local
+dashboard after changing kubeconfig context or credentials. Login needs permissions
+to read Deployments, ReplicaSets and pods and update `deployments/scale`.
+
+Controls default to disabled and require loopback, a same-origin request and an
+ephemeral capability token that is not exported. They stay disabled inside a
+Kubernetes pod, including through port-forwarding. Keep the local dashboard open
+for control and use a separate Route tab to show the deployed app. A browser
+request timeout does not cancel a server-side scale operation; inspect status
+before retrying. Terminal commands remain the fallback.
 
 These commands use your authenticated `oc` CLI and actually change **only the
 named Deployment**. No cluster token is sent to the SPA. The default observation
@@ -371,6 +400,33 @@ missing/coarse. Import an observation object in Session setup with `runtime`
 `requests`, `limits`, `scheduling`, `image_pull`, `process_start`, `readiness`,
 `under_load`. State units and start/end boundaries. Collect SLO evidence with a
 separately specified load test; never derive it from Ready.
+
+## Explain workload and cluster differences
+
+In Compare, expand **Why Fibonacci and prime sieve can favor different runtimes**.
+Fibonacci stresses recursive calls and integer addition with little explicit heap
+allocation. The sieve allocates an array, marks elements in loops and constructs
+an `ArrayList<Integer>` with boxing. Different generated code, JIT optimization,
+allocation and GC behavior can favor different runtimes. If your two measured
+winners differ, the SPA calls out that crossover; it does not invent a cause.
+Five calls cannot establish JIT steady state. Compiler/allocation/GC profiles and
+reversed-order fresh-process runs are needed to investigate causality. See
+[GraalVM performance mechanisms](https://www.graalvm.org/latest/reference-manual/native-image/optimizations-and-performance/).
+
+When `/perf/info` detects the Kubernetes service environment marker, the SPA
+shows a cluster note. A CPU limit can throttle even one compute-bound request;
+`ActiveProcessorCount` and CPU requests do not grant unrestricted CPU time.
+Different node hardware, architecture, load, heap/GC and JIT history also matter.
+The server's `duration_ns` wraps elapsed algorithm time, which includes time when
+the thread is descheduled/throttled. Route, TLS and network overhead add to
+browser HTTP duration, not this server timer. Actual throttling was not measured
+by this demo, so inspect pod limits and CPU throttling metrics before concluding
+that it caused your result. See [Kubernetes resource management](https://kubernetes.io/docs/concepts/configuration/manage-resources-containers/).
+
+After scaling, a Route can send requests to different pods. Use a specific pod
+port-forward or keep one replica for a single-process benchmark; the SPA rejects
+changed process IDs rather than combining pod samples. Local and cluster results
+must retain different resource/environment settings, even if both say JVM.
 
 ## Curl fallback
 

@@ -141,7 +141,14 @@ class Demo:
         xms, xmx = os.environ.get('DEMO_XMS', '64m'), os.environ.get('DEMO_XMX', '256m')
         if not all(re.fullmatch(r'[1-9][0-9]*[kKmMgG]', v) for v in [xms, xmx]):
             raise DemoError('DEMO_XMS and DEMO_XMX must be sizes such as 64m and 256m.')
-        return dict(port=port, cpus=cpus, xms=xms, xmx=xmx)
+        settings = dict(port=port, cpus=cpus, xms=xms, xmx=xmx)
+        if os.environ.get('DEMO_CLUSTER_CONTROL', '').lower() == 'true':
+            namespace = os.environ.get('DEMO_NAMESPACE', DEFAULT_DEPLOYMENT)
+            deployment = os.environ.get('DEMO_DEPLOYMENT', DEFAULT_DEPLOYMENT)
+            if not re.fullmatch(r'[a-z0-9](?:[-a-z0-9]*[a-z0-9])?', namespace) or not re.fullmatch(r'[a-z0-9](?:[-a-z0-9.]*[a-z0-9])?', deployment):
+                raise DemoError('Invalid DEMO_NAMESPACE or DEMO_DEPLOYMENT.')
+            settings.update(cluster_control=True, namespace=namespace, deployment=deployment)
+        return settings
 
     def process(self):
         if not self.state.exists():
@@ -353,6 +360,9 @@ class Demo:
         evidence_path = evidence_dir / f'{token}.json'
         flags = [f'-Xms{settings["xms"]}', f'-Xmx{settings["xmx"]}', f'-XX:ActiveProcessorCount={settings["cpus"]}',
                  f'-Dquarkus.http.port={settings["port"]}', '-Dquarkus.http.host=127.0.0.1', f'-Ddemo.launch.id={token}', f'-Ddemo.evidence.path={evidence_path}']
+        if settings.get('cluster_control'):
+            flags += ['-Ddemo.cluster-control.enabled=true', f'-Ddemo.cluster-control.namespace={settings["namespace"]}',
+                      f'-Ddemo.cluster-control.deployment={settings["deployment"]}', f'-Ddemo.cluster-control.observation-path={self.home / "scales/latest.json"}']
         args = [manifest['toolchain']['java']] + flags + ['-jar', str(directory / 'jvm/quarkus-app/quarkus-run.jar')] if runtime == 'jvm' else [str(directory / 'native/app')] + flags
         log_dir = self.home / 'logs'
         log_dir.mkdir(exist_ok=True)

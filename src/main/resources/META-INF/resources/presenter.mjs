@@ -17,6 +17,7 @@ import {
   postload,
   snapshot as recordSnapshot,
   insight,
+  workloadInsight,
   load,
   save,
   decode,
@@ -45,6 +46,7 @@ let active = null,
   timer = null,
   backoff = 1000,
   preserveImportedOnNextPoll = false,
+  clusterControl = null,
   selected = { jvm: null, "native-image": null };
 const phases = [
   [
@@ -75,10 +77,10 @@ const phases = [
     "Containerize",
     "Package once. Run anywhere compatible.",
     "Inspect the prepared Quarkus + Jib image and reuse it locally or in your cluster.",
-    "Continue to OpenShift",
+    "Continue to Kubernetes",
   ],
   [
-    "OpenShift",
+    "Kubernetes",
     "Take the image to your cluster.",
     "Copy the image reference and open your prepared OpenShift console.",
     "Export session",
@@ -172,6 +174,7 @@ function render() {
     : connected
       ? "Connected · live"
       : "Disconnected / reconnecting";
+  $("cluster-note").hidden = info?.execution_environment?.mode !== "kubernetes";
   $("runtime").textContent =
     connected && active
       ? active.runtime === "jvm"
@@ -322,13 +325,18 @@ function highlightInsight(text) {
   }
   target.append(document.createTextNode(text.slice(end)));
 }
+let comparisonSignature = "";
 function renderComparison() {
   const benchmark = session.benchmark;
   const a = selectedRun("jvm"),
     b = selectedRun("native-image"),
     grid = el("div", "", "compare-grid");
+  const signature = JSON.stringify([a, b, benchmark, session.observationPhase]);
+  if (signature === comparisonSignature) return;
+  // Background polls must not replace a focused native select or reset its popup.
+  comparisonSignature = signature;
   highlightInsight(insight(a, b, benchmark));
-  $("insight-workload").textContent = BENCHMARKS[benchmark].description;
+  $("insight-workload").textContent = workloadInsight(a, b, benchmark);
   grid.append(
     el("div", "MEASUREMENT"),
     el("div", a ? "JVM" : "JVM · NOT RUN", "jvm big"),
@@ -686,6 +694,13 @@ async function poll() {
       if (scale?.kind === "scale")
         session.deployment.scale = structuredClone(scale);
       info = next;
+      if (session.phase === 5 && clusterControl?.enabled) {
+        try {
+          await checkClusterControl();
+        } catch {
+          /* A control failure is separate from the benchmark connection. */
+        }
+      }
       if (
         session.phase === 2 &&
         session.switchFrom &&
@@ -946,6 +961,18 @@ function renderDeployment() {
       ),
     );
   const scaling = scaleCommands(settings);
+  const controlMatches =
+    clusterControl?.enabled &&
+    clusterControl.namespace === settings.namespace &&
+    clusterControl.deployment === settings.deployment;
+  $("direct-scale-out").disabled =
+    busy || !connected || !controlMatches || clusterControl.running;
+  $("direct-scale-in").disabled =
+    busy || !connected || !controlMatches || clusterControl.running;
+  if (clusterControl)
+    $("control-status").textContent = clusterControl.enabled
+      ? `Local controller: ${clusterControl.namespace}/${clusterControl.deployment} · context ${clusterControl.context || "unknown"} · API ${clusterControl.api_server || "unknown"} · ${clusterControl.running ? "observing; actions locked" : "ready"}${controlMatches ? "" : ". Form target differs; match the configured local target to enable buttons."}`
+      : clusterControl.reason;
   $("scale-out-command").textContent =
     scaling?.out || "Enter valid project and Deployment names.";
   $("scale-in-command").textContent = scaling?.inside || "";
@@ -966,7 +993,7 @@ function renderDeployment() {
     panelScale.append(
       el(
         "h3",
-        `Recorded scale: ${recorded.from_replicas} → ${recorded.target} · ${recorded.status}`,
+        `Recorded scale: ${recorded.from_replicas ?? "unknown"} → ${recorded.target} · ${recorded.status}`,
       ),
       el(
         "p",
@@ -1033,6 +1060,60 @@ $("copy-scale-out").onclick = () =>
   copyText(scaleCommands(session.deployment)?.out);
 $("copy-scale-in").onclick = () =>
   copyText(scaleCommands(session.deployment)?.inside);
+async function checkClusterControl() {
+  if (busy) return;
+  const result = (await request("/demo/cluster-control", 6000)).data;
+  clusterControl = result; // Ephemeral capability token; never saved or exported.
+  if (result.observation?.kind === "scale") {
+    session.deployment.scale = result.observation;
+    persist();
+  }
+  renderDeployment();
+}
+$("connect-control").onclick = async () => {
+  try {
+    await checkClusterControl();
+  } catch (e) {
+    clusterControl = null;
+    $("control-status").textContent =
+      `Local control unavailable: ${e.message}. Check login, enable it locally, or use the copy commands.`;
+  }
+};
+async function directScale(replicas) {
+  if (busy || !connected || !clusterControl?.enabled || clusterControl.running)
+    return;
+  if (
+    !confirm(
+      `Scale ${clusterControl.namespace}/${clusterControl.deployment} to ${replicas} replicas in context ${clusterControl.context || "unknown"} (${clusterControl.api_server || "verify local API server"})? This changes the real cluster. Timeout does not roll back the change.`,
+    )
+  )
+    return;
+  const controller = new AbortController(),
+    timeout = setTimeout(() => controller.abort(), 6000);
+  try {
+    const response = await fetch("/demo/cluster-control/scale", {
+      method: "POST",
+      credentials: "same-origin",
+      signal: controller.signal,
+      headers: {
+        "Content-Type": "application/json",
+        "X-Demo-Control": clusterControl.token,
+      },
+      body: JSON.stringify({ replicas }),
+    });
+    if (!response.ok) throw Error(`HTTP ${response.status}`);
+    clusterControl.running = true;
+    renderDeployment();
+    await checkClusterControl();
+  } catch (e) {
+    $("control-status").textContent =
+      `Scale request was not confirmed: ${e.message}. Check controller status and the console before retrying; an aborted browser request does not cancel a server operation.`;
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+$("direct-scale-out").onclick = () => directScale(100);
+$("direct-scale-in").onclick = () => directScale(1);
 $("check-route").onclick = async () => {
   const address = consoleLink(session.deployment.applicationUrl);
   if (!address) return tell("Enter an HTTPS application Route URL first.");
