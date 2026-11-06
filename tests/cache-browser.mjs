@@ -11,6 +11,7 @@ const assets = new Set([
   "/index.html",
   "/presenter.mjs",
   "/session.mjs",
+  "/deployment.mjs",
   "/presenter.css",
 ]);
 const root = new URL(

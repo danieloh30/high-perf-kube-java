@@ -18,6 +18,7 @@ import sys
 import time
 import urllib.error
 import urllib.request
+import urllib.parse
 import uuid
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -460,6 +461,159 @@ class Demo:
         time.sleep(2)
         self.start(runtime, manifest, settings)
 
+    def image(self, image, platform_name, push=False):
+        # Jib is the builder. Podman is used only for the local image load/inspection.
+        if not re.fullmatch(r'[a-z0-9.-]+(?::[0-9]+)?/(?:[a-z0-9]+(?:[._-][a-z0-9]+)*/)*[a-z0-9]+(?:[._-][a-z0-9]+)*:[A-Za-z0-9_][A-Za-z0-9_.-]{0,127}', image):
+            raise DemoError('Use a tagged image reference, e.g. quay.io/danieloh30/high-perf-java:jvm-demo, not a registry web-page URL.')
+        if platform_name not in ['linux/amd64', 'linux/arm64']:
+            raise DemoError('Choose linux/amd64 or linux/arm64 to match the target cluster or Podman machine.')
+        tools = self.toolchain()
+        podman = shutil.which('podman')
+        if not push:
+            if not podman:
+                raise DemoError('Local Jib image loading requires Podman. Use --push for a registry-only build without a local daemon.')
+            check = subprocess.run([podman, 'info'], stdout=subprocess.DEVNULL, stderr=subprocess.PIPE, text=True)
+            if check.returncode:
+                raise DemoError('Podman is not ready. Start its machine first, or use --push with registry credentials configured.')
+        before = source_hash(self.root)
+        directory = self.home / 'images' / (dt.datetime.now(dt.timezone.utc).strftime('%Y%m%dT%H%M%SZ-') + uuid.uuid4().hex[:8])
+        source = directory / 'source'
+        source.mkdir(parents=True)
+        for name in ['pom.xml', 'mvnw']:
+            shutil.copy2(self.root / name, source / name)
+        for name in ['.mvn', 'src/main']:
+            if (self.root / name).exists():
+                shutil.copytree(self.root / name, source / name)
+        args = [str(source / 'mvnw'), 'package', '-DskipTests', '-P!native',
+                '-Dquarkus.native.enabled=false', '-Dquarkus.package.jar.enabled=true',
+                '-Dquarkus.package.jar.type=fast-jar', '-Dquarkus.container-image.builder=jib',
+                '-Dquarkus.container-image.build=true', f'-Dquarkus.container-image.push={str(push).lower()}',
+                f'-Dquarkus.container-image.image={image}', f'-Dquarkus.jib.platforms={platform_name}',
+                '-Dquarkus.http.cors.enabled=true', '-Dquarkus.http.cors.origins=http://localhost:8080,http://127.0.0.1:8080']
+        if not push:
+            args.append(f'-Dquarkus.jib.docker-executable-name={podman}')
+        base = os.environ.get('DEMO_JIB_BASE_IMAGE')
+        if base:
+            args.append(f'-Dquarkus.jib.base-jvm-image={base}')
+        origins=os.environ.get('DEMO_DASHBOARD_ORIGINS',f'http://localhost:{self.settings()["port"]},http://127.0.0.1:{self.settings()["port"]}')
+        for origin in origins.split(','):
+            parsed=urllib.parse.urlsplit(origin)
+            if parsed.scheme not in ['http','https'] or not parsed.hostname or parsed.username or parsed.password or parsed.query or parsed.fragment or parsed.path not in ['', '/']:
+                raise DemoError('DEMO_DASHBOARD_ORIGINS must contain explicit http(s) origins, without credentials or paths.')
+        args=[a for a in args if not a.startswith('-Dquarkus.http.cors.origins=')]+[f'-Dquarkus.http.cors.origins={origins}']
+        env = dict(os.environ, JAVA_HOME=tools['java_home'])
+        log = directory / 'jib-build.log'
+        timestamp, start = stamp(), time.perf_counter()
+        print(f'Building JVM container with quarkus-container-image-jib ({platform_name}). Log: {log}', flush=True)
+        with log.open('w') as stream:
+            result = subprocess.run(args, cwd=source, env=env, stdout=stream, stderr=subprocess.STDOUT, check=False)
+        elapsed = time.perf_counter() - start
+        if result.returncode:
+            raise DemoError(f'Jib image build failed ({result.returncode}); see {log}. Prepared host artifacts are unchanged.')
+        if source_hash(self.root) != before:
+            raise DemoError('Sources changed while building the image; receipt not published. Rebuild before using it in the presentation.')
+        digest_path = source / 'target/jib-image.digest'
+        digest = digest_path.read_text().strip() if digest_path.exists() else ''
+        if not re.fullmatch(r'sha256:[a-f0-9]{64}', digest):
+            raise DemoError(f'Jib did not produce a valid image digest. Inspect {log}; no successful image receipt was published.')
+        size, size_source = None, 'not collected: registry-only push; local uncompressed image size was not inspected'
+        if not push:
+            try:
+                inspected = json.loads(capture([podman, 'image', 'inspect', image]))
+                value = inspected[0].get('Size') if isinstance(inspected, list) and inspected else None
+                if isinstance(value, int) and not isinstance(value, bool) and value >= 0:
+                    size, size_source = value, 'podman image inspect Size: local image bytes, not compressed registry transfer bytes'
+            except (DemoError, ValueError):
+                size_source = 'not collected: local image inspection failed'
+        receipt = dict(version=1, builder='quarkus-container-image-jib', runtime='jvm', image=image,
+                       digest=digest, platform=platform_name, published=push, local=not push, dashboard_origins=origins,
+                       image_bytes=size, image_size_source=size_source, build_seconds=elapsed,
+                       source_hash=before, revision=capture(['git', 'rev-parse', 'HEAD'], self.root),
+                       timestamp=timestamp, source=str(log.relative_to(self.root)), command=args)
+        write_json(directory / 'receipt.json', receipt)
+        write_json(self.home / 'images/latest.json', receipt)
+        print(json.dumps(receipt, indent=2))
+        if push:
+            print('Registry push completed. Copy the image reference/digest into the OpenShift console.')
+        else:
+            print('Jib build completed and loaded into Podman. Optional functional check: podman run --rm -p 127.0.0.1:8082:8080 ' + image)
+        return receipt
+
+    def scale(self, namespace, deployment, replicas, timeout_seconds=300):
+        if not re.fullmatch(r'[a-z0-9](?:[-a-z0-9]*[a-z0-9])?',namespace) or not re.fullmatch(r'[a-z0-9](?:[-a-z0-9.]*[a-z0-9])?',deployment):
+            raise DemoError('Use explicit valid namespace and Deployment names.')
+        if not 0 <= replicas <= 100 or not 1 <= timeout_seconds <= 3600:
+            raise DemoError('Replicas must be 0–100; timeout must be 1–3600 seconds.')
+        oc = shutil.which('oc')
+        if not oc:
+            raise DemoError('oc is required; log into your prepared OpenShift cluster before scaling.')
+        def call(*args):
+            try:
+                result = subprocess.run([oc,*args],stdout=subprocess.PIPE,stderr=subprocess.PIPE,text=True,timeout=15)
+            except subprocess.TimeoutExpired as exc:
+                raise DemoError('OpenShift API command timed out.') from exc
+            if result.returncode:
+                raise DemoError(result.stderr.strip() or 'OpenShift API command failed.')
+            return result.stdout
+        def resource(kind,name=None,selector=None):
+            args=['-n',namespace,'get',kind]
+            if name:args.append(name)
+            if selector:args+=['-l',selector]
+            return json.loads(call(*args,'-o','json'))
+        initial=resource('deployment',deployment)
+        uid=initial['metadata']['uid']
+        labels=initial['spec']['selector'].get('matchLabels',{})
+        if not labels or initial['spec']['selector'].get('matchExpressions'):
+            raise DemoError('This observer requires a Deployment with a nonempty matchLabels selector and no matchExpressions.')
+        selector=','.join(f'{k}={v}' for k,v in sorted(labels.items()))
+        template=json.dumps(initial['spec']['template'],sort_keys=True)
+        original=initial['spec'].get('replicas',1)
+        directory=self.home/'scales';directory.mkdir(exist_ok=True)
+        path=directory/(dt.datetime.now(dt.timezone.utc).strftime('%Y%m%dT%H%M%SZ-')+uuid.uuid4().hex[:8]+'.json')
+        record=dict(version=1,kind='scale',status='observing',namespace=namespace,deployment=deployment,
+                    deployment_uid=uid,from_replicas=original,target=replicas,timestamp=stamp(),
+                    source='oc scale + oc get deployment/replicasets/pods, current authenticated CLI context',
+                    context=call('config','current-context').strip(),poll_interval_ms=2000,
+                    boundary='before oc scale request to observed Ready + Available target and excess owned pods terminated; includes API latency and polling',
+                    images=[dict(name=c.get('name'),image=c.get('image'),resources=c.get('resources',{})) for c in initial['spec']['template']['spec']['containers']],timeline=[],duration_ms=None)
+        def publish():
+            write_json(path,record);write_json(directory/'latest.json',record)
+        if original==replicas:
+            record['status']='already-at-target';record['reason']='No scale change requested; not a scale-time measurement.';publish();print(json.dumps(record,indent=2));return record
+        start=time.perf_counter()
+        try:
+            print(f'Scaling Deployment {namespace}/{deployment}: {original} → {replicas}. Observation: {path}',flush=True)
+            call('-n',namespace,'scale','deployment/'+deployment,'--replicas='+str(replicas))
+            while True:
+                current=resource('deployment',deployment)
+                if current['metadata']['uid']!=uid or json.dumps(current['spec']['template'],sort_keys=True)!=template:
+                    raise DemoError('Deployment identity or pod template changed during observation; scale comparison invalid.')
+                if current['spec'].get('replicas')!=replicas:
+                    raise DemoError('Another actor changed desired replicas during observation.')
+                replica_sets=resource('replicasets',selector=selector).get('items',[])
+                owned={r['metadata']['uid'] for r in replica_sets if any(o.get('uid')==uid for o in r['metadata'].get('ownerReferences',[]))}
+                pods=[p for p in resource('pods',selector=selector).get('items',[]) if any(o.get('uid') in owned for o in p['metadata'].get('ownerReferences',[]))]
+                status=current.get('status',{})
+                row=dict(elapsed_ms=(time.perf_counter()-start)*1000,observed_at=stamp(),
+                         ready=status.get('readyReplicas',0),available=status.get('availableReplicas',0),
+                         updated=status.get('updatedReplicas',0),replicas=status.get('replicas',0),
+                         owned_pods=len(pods),ready_pods=sum(any(c.get('type')=='Ready' and c.get('status')=='True' for c in p.get('status',{}).get('conditions',[])) for p in pods),
+                         terminating=sum(bool(p['metadata'].get('deletionTimestamp')) for p in pods),
+                         pending=sum(p.get('status',{}).get('phase')=='Pending' for p in pods))
+                record['timeline'].append(row)
+                complete=all(row[k]==replicas for k in ['ready','available','updated','replicas','owned_pods','ready_pods']) and row['terminating']==0 and status.get('observedGeneration',0)>=current['metadata'].get('generation',0)
+                print(f'{row["elapsed_ms"]/1000:.1f}s: Ready {row["ready"]}/{replicas}, Available {row["available"]}, Pending {row["pending"]}, Terminating {row["terminating"]}',flush=True)
+                if complete:
+                    record['status']='complete';record['duration_ms']=row['elapsed_ms'];publish();return record
+                if row['elapsed_ms']>=timeout_seconds*1000:
+                    record['status']='timed-out';record['reason']='Target not observed within timeout; this is not a successful zero-duration result.';publish();raise DemoError('Scale observation timed out. Desired replicas remain changed; inspect scheduling, image pulls, probes and quota in the console.')
+                publish();time.sleep(2)
+        except KeyboardInterrupt:
+            record['status']='cancelled';record['reason']='Observer interrupted; desired replica count was not rolled back.';publish();raise
+        except (DemoError,ValueError,KeyError) as exc:
+            if record['status']!='timed-out':record['status']='failed';record['reason']=str(exc)
+            publish();raise DemoError(f'{exc} Observation saved to {path}') from exc
+
     def reset(self):
         # Keep the lock inode: replacing it would let a concurrent command bypass flock.
         self.no_dev_mode()
@@ -505,11 +659,23 @@ def main():
     parser = argparse.ArgumentParser(prog='./demo.sh', description='Prebuild both runtimes once; launch and switch packaged artifacts on one port.')
     subs = parser.add_subparsers(dest='command', required=True)
     prepare = subs.add_parser('prepare', help='Build missing/stale JVM and native artifacts; do not start')
+    prepare.add_argument('--image', help='Also build this tagged JVM image using Quarkus Jib after host preparation')
+    prepare.add_argument('--push-image', action='store_true', help='Push the Jib image directly to the registry; requires --image')
+    prepare.add_argument('--platform', dest='platform_name', choices=['linux/amd64','linux/arm64'], default='linux/amd64')
     prepare.add_argument('--force', action='store_true', help='Create a fresh bundle even when sources match')
     up = subs.add_parser('up', help='Prepare if needed, then start packaged JVM (or native)')
     up.add_argument('runtime', choices=['jvm', 'native'], nargs='?', default='jvm')
     switch = subs.add_parser('switch', help='Switch to the other prepared runtime, preserving settings')
     switch.add_argument('runtime', choices=['jvm', 'native'], nargs='?')
+    scale = subs.add_parser('scale', help='Scale an explicitly named OpenShift Deployment and record Ready/Available convergence')
+    scale.add_argument('--namespace', required=True)
+    scale.add_argument('--deployment', required=True)
+    scale.add_argument('--replicas', type=int, required=True)
+    scale.add_argument('--timeout', dest='timeout_seconds', type=int, default=300)
+    image = subs.add_parser('image', help='Build a JVM image with the installed Quarkus Jib extension; isolated from host artifacts')
+    image.add_argument('--image', default=os.environ.get('DEMO_IMAGE', 'quay.io/danieloh30/high-perf-java:jvm-demo'))
+    image.add_argument('--platform', dest='platform_name', choices=['linux/amd64', 'linux/arm64'], default='linux/amd64')
+    image.add_argument('--push', action='store_true', help='Push directly with Jib; no local Podman load (registry credentials required)')
     for command, help_text in [('down', 'Stop only the script-owned runtime'), ('status', 'Show runtime, health and launch settings'), ('logs', 'Print the last 80 log lines'), ('costs', 'Print measured build costs and provenance'), ('reset', 'Stop managed demo and remove demo artifacts plus target/')]:
         subs.add_parser(command, help=help_text)
     args = parser.parse_args()
@@ -519,7 +685,15 @@ def main():
         demo = Demo()
         with demo.lock():
             if args.command == 'prepare':
+                if args.push_image and not args.image:
+                    raise DemoError('--push-image requires --image registry/repository:tag')
                 demo.prepare(args.force)
+                if args.image:
+                    demo.image(args.image,args.platform_name,args.push_image)
+            elif args.command == 'scale':
+                demo.scale(args.namespace,args.deployment,args.replicas,args.timeout_seconds)
+            elif args.command == 'image':
+                demo.image(args.image, args.platform_name, args.push)
             elif args.command in ['up', 'switch']:
                 getattr(demo, args.command)(args.runtime)
             else:

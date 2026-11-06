@@ -4,7 +4,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width,initial-scale=1" />
     <title>Runtime Lab · JVM × Native Image</title>
-    <link rel="stylesheet" href="presenter.css?v=20261106-3" />
+    <link rel="stylesheet" href="presenter.css?v=20261106-4" />
   </head>
   <body>
     <header>
@@ -101,49 +101,245 @@
         <article id="insights" class="insights">
           <b>What these computation results mean</b>
           <p id="computation-insight"></p>
-          <details>
-            <summary>
-              Computation, startup and memory are different measurements
-            </summary>
-            <p>
-              Native Image compiles ahead of time and often reduces startup work
-              and runtime memory. The JVM can optimize hot code with its JIT
-              compiler and can match or exceed native computation speed. Neither
-              must win this workload. First samples are after startup; a few
-              sequential calls do not establish steady state, sustained
-              throughput, p99 or an SLO. Browser HTTP includes network, queueing
-              and serialization; server duration measures only the algorithm.
-              RSS includes more than heap; artifact bytes are not image bytes.
+          <details class="insight-explainer">
+            <summary>Understand the tradeoffs</summary>
+            <div class="concept-grid">
+              <article>
+                <span class="concept-label native">AOT · NATIVE IMAGE</span>
+                <h3>Prepare ahead of time.</h3>
+                <p>
+                  <strong>Startup work</strong> and
+                  <strong>runtime memory</strong> can decrease because
+                  compilation happens during the build. That moves cost into
+                  <mark>build time</mark>.
+                </p>
+              </article>
+              <article>
+                <span class="concept-label jvm">JIT · JVM</span>
+                <h3>Optimize as it runs.</h3>
+                <p>
+                  The JIT can optimize <strong>hot code</strong>. Repeated
+                  computation can <mark>match or exceed native</mark>; neither
+                  runtime must win this workload.
+                </p>
+              </article>
+              <article>
+                <span class="concept-label">MEASUREMENT BOUNDARIES</span>
+                <h3>Compare the same boundary.</h3>
+                <p>
+                  <strong>Server computation</strong> wraps only the algorithm.
+                  <strong>Browser HTTP</strong> also includes queueing,
+                  transport and serialization. <strong>RSS ≠ heap</strong>;
+                  artifact bytes ≠ image bytes.
+                </p>
+              </article>
+            </div>
+            <p class="insight-limits">
+              <strong>First sample ≠ startup.</strong> Five sequential calls do
+              not establish <strong>steady state</strong>, sustained throughput,
+              p99 or an SLO.
             </p>
             <p id="insight-workload"></p>
             <a
               href="https://quarkus.io/guides/building-native-image"
               target="_blank"
               rel="noopener"
-              >Quarkus native-image tradeoffs</a
+              >Quarkus native-image tradeoffs ↗</a
             >
           </details>
         </article>
         <div id="comparison"></div>
         <div class="callout" id="warnings"></div>
       </section>
+      <section id="containerize" class="phase" hidden>
+        <div class="image-pipeline" aria-label="Container build flow">
+          <span>Java sources</span><i>→</i><span>Quarkus build</span><i>→</i
+          ><strong>Jib layers</strong><i>→</i><span>OCI image</span><i>→</i
+          ><span>Quay / Podman</span>
+        </div>
+        <div class="jib-benefits">
+          <article class="card">
+            <span class="concept-label native">NO DOCKERFILE</span>
+            <h3>Quarkus knows the app.</h3>
+            <p>
+              The existing <code>quarkus-container-image-jib</code> extension
+              packages the JVM application as an image.
+            </p>
+          </article>
+          <article class="card">
+            <span class="concept-label jvm">REUSE LAYERS</span>
+            <h3>Cache what stays stable.</h3>
+            <p>
+              Dependencies and application content use separate layers, helping
+              incremental builds and pushes reuse unchanged content.
+            </p>
+          </article>
+          <article class="card">
+            <span class="concept-label">REGISTRY-READY</span>
+            <h3>Push without a daemon.</h3>
+            <p>
+              Jib can build and push directly to a registry. The optional local
+              image load/run still needs Podman.
+            </p>
+          </article>
+        </div>
+        <div class="split deployment-workspace">
+          <article class="card">
+            <div class="eyebrow">JVM IMAGE / JIB BUILDER</div>
+            <label
+              >Tagged image reference<input
+                id="container-image"
+                spellcheck="false" /></label
+            ><label
+              >Target platform<select id="container-platform">
+                <option value="linux/amd64">linux/amd64</option>
+                <option value="linux/arm64">linux/arm64</option>
+              </select></label
+            >
+            <p class="footnote">
+              Choose the architecture for your cluster or Podman machine. These
+              are desired settings; no cluster architecture is inferred.
+            </p>
+            <p class="footnote">
+              Prepare and optionally push this image before presenting with
+              <code>demo.sh prepare --image … --push-image</code>. Jib is the
+              builder; local image loading uses Podman. The SPA displays
+              existing image evidence and does not trigger builds or pushes.
+            </p>
+          </article>
+          <article class="card">
+            <div class="eyebrow">COLLECTED IMAGE EVIDENCE</div>
+            <div id="image-evidence"></div>
+            <details>
+              <summary>Optional: run locally with Podman</summary>
+              <pre id="podman-command"></pre>
+              <button id="copy-podman-run">Copy Podman run</button
+              ><a
+                class="external-link"
+                href="http://localhost:8082"
+                target="_blank"
+                rel="noopener"
+                >Open container dashboard ↗</a
+              >
+              <p>
+                Functional check on a separate port/origin. This does not add a
+                third performance column. Podman on macOS runs Linux in a VM;
+                emulation and resource limits change the measurement
+                environment.
+              </p>
+            </details>
+          </article>
+        </div>
+      </section>
       <section id="kubernetes" class="phase" hidden>
         <div class="split">
           <article class="card">
-            <div class="eyebrow">OPTIONAL / EXTERNALLY COLLECTED</div>
-            <h2>Ready is one milestone.</h2>
+            <div class="eyebrow">PREPARED CLUSTER / CONSOLE HANDOFF</div>
+            <h2>From image to application.</h2>
+            <label
+              >OpenShift console or prepared Topology URL<input
+                id="openshift-console"
+                type="url"
+                placeholder="https://console-openshift-console.apps.your-cluster.example" /></label
+            ><label
+              >Project / namespace<input
+                id="openshift-project"
+                placeholder="high-perf-java" /></label
+            ><label
+              >Deployment name<input
+                id="openshift-deployment"
+                placeholder="high-perf-java"
+            /></label>
+            <p id="deploy-image-reference" class="image-reference"></p>
+            <div class="actions">
+              <button id="copy-deploy-image">Copy image reference</button
+              ><a
+                id="open-openshift"
+                class="external-link"
+                target="_blank"
+                rel="noopener noreferrer"
+                >Open OpenShift console ↗</a
+              ><a
+                href="https://quay.io/repository/danieloh30/high-perf-java?tab=tags"
+                class="external-link"
+                target="_blank"
+                rel="noopener noreferrer"
+                >Open Quay repository ↗</a
+              >
+            </div>
+            <ol class="handoff-steps">
+              <li>Open your prepared project in Topology.</li>
+              <li>
+                Add to Project → Container Image. Paste the image reference.
+              </li>
+              <li>Create a Deployment, service port 8080 and a Route.</li>
+              <li>
+                Configure probes and resources, then inspect the pod and Route.
+              </li>
+            </ol>
+            <p class="footnote">
+              The console uses your existing login. No credentials are stored in
+              this SPA. Copy the image reference, not the Quay repository
+              web-page URL. For version-specific console paths, paste the exact
+              Topology URL before presenting.
+            </p>
+          </article>
+          <article class="card">
+            <div class="eyebrow">READINESS IS ONE MILESTONE</div>
+            <h2>Deployed → Ready → measured.</h2>
             <p>
               Scheduling → image pull → process start → readiness → performance
               under load.
             </p>
-            <p>A Ready pod has not demonstrated a throughput or latency SLO.</p>
             <p>
-              Import observations below. No cluster connection is required. See
-              DEMO.md for the collection workflow.
+              <strong>Ready does not prove a throughput or latency SLO.</strong>
             </p>
-          </article>
-          <article class="card">
-            <h2>Collected observations</h2>
+            <details>
+              <summary>Probe and resource checklist</summary>
+              <p>
+                Application port: 8080. Startup/readiness:
+                <code>/q/health/ready</code>. Liveness:
+                <code>/q/health/live</code>. Configure CPU/memory requests and
+                limits for your prepared cluster. Start with enough
+                startup-probe allowance for JVM boot; readiness and liveness
+                have different purposes.
+              </p>
+              <p>
+                Use an image tag/digest and architecture verified before the
+                talk. Private images require the cluster's image-pull
+                credentials. The SPA opens the console; it does not deploy or
+                provision resources.
+              </p>
+            </details>
+            <label
+              >Deployed application Route URL<input
+                id="application-url"
+                type="url"
+                placeholder="https://high-perf-java.apps.your-cluster.example" /></label
+            ><button id="check-route">Check deployed app</button
+            ><a
+              id="open-route"
+              class="external-link"
+              target="_blank"
+              rel="noopener noreferrer"
+              >Open deployed app ↗</a
+            >
+            <p id="route-status">Route not checked.</p>
+            <details>
+              <summary>Scale exercise: 1 → 100 → 1</summary>
+              <p>
+                Prepare capacity, quota and resource settings before the talk.
+                Copy a command and run it in the terminal after deploying. The
+                observer records API polling and pod termination, not a pure
+                runtime startup time.
+              </p>
+              <pre id="scale-out-command"></pre>
+              <button id="copy-scale-out">Copy scale to 100</button>
+              <pre id="scale-in-command"></pre>
+              <button id="copy-scale-in">Copy scale to 1</button>
+              <div id="scale-evidence"></div>
+            </details>
+            <h3>External observations</h3>
             <div id="observations"></div>
           </article>
         </div>
@@ -225,6 +421,6 @@
         >
       </footer>
     </main>
-    <script type="module" src="presenter.mjs?v=20261106-3"></script>
+    <script type="module" src="presenter.mjs?v=20261106-4"></script>
   </body>
 </html>

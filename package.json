@@ -2,7 +2,7 @@
   "name": "runtime-lab-verification",
   "private": true,
   "scripts": {
-    "test": "node --test tests/session.test.mjs",
+    "test": "node --test tests/session.test.mjs tests/deployment.test.mjs",
     "test:browser": "node tests/browser.mjs",
     "test:cache": "node tests/cache-browser.mjs"
   },

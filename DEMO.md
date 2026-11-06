@@ -1,6 +1,6 @@
 # JVM versus Native Image: presenter guide
 
-The story is **observe → compute → switch → repeat → explain the tradeoffs**.
+The story is **observe → compute → switch → compare → containerize → OpenShift**.
 Native Image need not win computation. This demo shows the measured outcome,
 startup observations, memory, and the costs of producing each artifact separately.
 
@@ -36,6 +36,9 @@ No container runtime is needed for this host-native demo. A container-built Linu
 executable would not run directly on macOS.
 
 ## Presenter script (5–7 minutes)
+
+Steps 1–5 are the core runtime comparison. The Jib/OpenShift/scaling chapter
+adds time and depends on real cluster convergence; rehearse it separately.
 
 Use **one terminal** for the commands below and **one browser tab** at
 http://localhost:8080. Keep that tab open for the entire comparison.
@@ -131,16 +134,132 @@ readiness. Memory is a point observation, not a leak or peak-usage test.”
 Check any resource-setting warnings. Equal Xmx is not equal RSS or an OS memory
 limit. A dirty build is flagged because commit revision alone is insufficient.
 
-### 6. Optional Kubernetes story and finish (about 30 seconds)
+### 6. Explain the prepared Jib image (extended chapter)
 
-Click **Continue to Kubernetes**. If this is a host-only rehearsal, explain why
-container/image metrics are not applicable or not collected. If you imported
-external pod observations, show their source and measurement boundaries.
+**Before the talk**, configure registry credentials using Quarkus's normal
+`QUARKUS_CONTAINER_IMAGE_USERNAME` / `QUARKUS_CONTAINER_IMAGE_PASSWORD`
+environment or credential provider. Do not enter credentials in the SPA or
+commit them. Match the target cluster architecture:
 
-Say: “Scheduling, image pull, process start, readiness and load performance are
-separate milestones. Ready does not prove a throughput or latency SLO.”
+```sh
+./demo.sh prepare --image quay.io/danieloh30/high-perf-java:jvm-demo \
+  --platform linux/amd64 --push-image
+./demo.sh up
+```
 
-Export the session from Session setup. **Terminal:** `./demo.sh down`.
+`prepare` builds the host JVM/native pair, then explicitly builds/pushes a **JVM
+image** using `quarkus-container-image-jib` and
+`quarkus.container-image.builder=jib`. The image build uses a separate source and
+output directory under `demo-artifacts/images/`, preserving host demo artifacts.
+It does not invoke `podman build` or `docker build`.
+
+To build only the image later, use `./demo.sh image --image … --platform … --push`.
+Without `--push` / `--push-image`, Jib builds and loads the image through Podman;
+start the Podman machine first. Registry-only pushes do not need a local daemon.
+Jib's dependency/application layers help incremental reuse, especially with warm
+caches; do not promise a fixed build-time improvement.
+
+**Browser:** from Compare, click **Continue to Containerize**. Show the prepared
+image reference, digest, platform, build receipt and sources. A source-matched
+receipt attaches to the host dashboard on its next metric poll. The UI never
+executes builds or pushes. A configured tag alone is not proof it exists in Quay.
+
+Say: “Quarkus already knows how the application is packaged. Jib turns that into
+container layers without a Dockerfile. Dependencies can stay cached while the
+application layer changes. We pushed this image before the talk.”
+
+For an optional Podman functional check, build locally without the push flag and
+use the displayed `podman run` command on port 8082. This opens a separate browser
+origin; it does not silently mix a container/VM measurement into host JVM/native
+results. macOS Podman uses a Linux VM; cross-architecture emulation changes the
+environment. A three-way performance comparison would require controlled settings
+and separate environment-aware measurements, so it is outside this demo's core.
+
+A macOS native executable cannot be packaged as a runnable Linux native image.
+This chapter deliberately uses the JVM image. A future native container requires
+a separately prepared Linux native executable and matching target architecture.
+
+### 7. Deploy that existing image in OpenShift
+
+Provision and log into your cluster before the talk. Prepare a project such as
+`high-perf-java`, resource quota/capacity and any private-registry pull credentials.
+Confirm the image platform matches the nodes. Paste the exact console/Topology
+URL for that project into **06 OpenShift**, along with project and Deployment name.
+
+**Browser / Containerize:** click **Continue to OpenShift**, then **Copy image
+reference**. A successfully pushed matching receipt supplies a digest-qualified
+reference; otherwise the configured tag is copied and its availability is unverified.
+
+Click **Open OpenShift console**. In your prepared project:
+
+1. Open Topology → Add to Project → Container Image (or +Add → Container Image).
+2. Paste `quay.io/danieloh30/high-perf-java:jvm-demo` or the copied digest reference.
+   Do not paste the Quay web-page URL.
+3. Choose a **Deployment**, explicitly name it `high-perf-java`, select service
+   port 8080 and create a Route.
+4. Configure startup/readiness probes on `/q/health/ready`, liveness on
+   `/q/health/live`, and appropriate CPU/memory requests and limits.
+5. Watch the pod reach Ready, open its Route, and copy the Route URL back into
+   the SPA's **Deployed application Route URL** field.
+
+Click **Check deployed app**. This makes a bounded browser GET to the Route's
+readiness endpoint; it never benchmarks or talks to the Kubernetes API.
+The result states its timestamp, HTTP duration and readiness. It observes one
+routed response, not every replica. **Open deployed app** is the CORS-independent
+fallback if the browser request cannot be made.
+
+Images prepared by the helper allow the dashboard origins `http://localhost:8080`
+and `http://127.0.0.1:8080` (or DEMO_PORT). Override with an explicit comma-separated
+`DEMO_DASHBOARD_ORIGINS` before building if presenting from another origin. No
+wildcard or credentials are injected. Existing images may need that CORS setting
+before a local dashboard can inspect their Route. TLS, authentication and network
+failures also remain explicit; they are not benchmark failures.
+
+Console flow: [Red Hat's image deployment guide](https://developers.redhat.com/learning/learn:openshift:get-started-your-developer-sandbox/resource/resources:build-your-application-container-image).
+Jib behavior: [Quarkus container-image guide](https://quarkus.io/guides/container-image#jib).
+
+### 8. Scale out to 100, then back in
+
+Prepare capacity and quota for 100 replicas in advance. For example, **100 pods
+with requests of 100m CPU and 128Mi memory request 10 CPU cores and 12.5Gi memory**,
+before other cluster overhead. These are planning examples, not configured values
+or measured data in the SPA. Check your actual pod resources and scheduling.
+Pre-pull images or explicitly explain cold image pulls if those are part of the story.
+
+Return to **06 OpenShift**, verify the project and Deployment name, and expand
+**Scale exercise: 1 → 100 → 1**. Use the copy buttons or run:
+
+```sh
+./demo.sh scale --namespace high-perf-java --deployment high-perf-java --replicas 100
+./demo.sh scale --namespace high-perf-java --deployment high-perf-java --replicas 1
+```
+
+These commands use your authenticated `oc` CLI and actually change **only the
+named Deployment**. No cluster token is sent to the SPA. The default observation
+timeout is 300 seconds (`--timeout` changes it). A timeout does not roll back the
+desired replica count; inspect the console and deliberately scale back if needed.
+
+Watch the console Topology/pods and the SPA's recorded trace. The observer stores
+Ready/Available/updated counts, pending and terminating owned pods, resource/image
+settings, timestamp and context in `demo-artifacts/scales/`. It follows pods owned
+through ReplicaSets of that Deployment, and rejects concurrent template/identity
+or desired-replica changes. Receipts attach to the local host dashboard as external
+cluster observations; each update is timestamped, not claimed as a live cluster API.
+
+Scale-out completes only when the controller has observed the desired generation
+and the target is updated, Ready and Available with the corresponding owned pod
+count. Scale-in also waits for excess owned pods to terminate. API polling is at
+2-second intervals, so elapsed time includes API latency and polling granularity.
+Already-at-target is recorded as no change, never as a zero-duration success.
+Failures, cancellation and timeouts stay explicit and never become successes.
+
+Say: “This is **scale request → observed convergence**, not pure runtime startup.
+Scheduling, node provisioning, image pulls, probes and termination grace periods
+all contribute. A Route can answer while other replicas are still pending.
+Ready does not establish a throughput or latency SLO.”
+
+Finish by scaling back to 1, exporting the session and running `./demo.sh down`.
+The cluster Deployment remains under your control; local down/reset does not delete it.
 
 ## Stop, reset, or start another comparison
 
@@ -209,8 +328,10 @@ launch it is not applicable. Unsupported or inaccessible sources remain explicit
 Non-heap values unsupported by a runtime remain unavailable. Maximum RSS reported
 by host time is not an aggregate concurrent container/build-memory peak.
 
-This launcher produces executables, not container images, so image bytes are not
-applicable to its host run. The optional Kubernetes panel accepts real external
+Host execution and container images remain separate artifacts. Jib image receipts
+record digest and platform; a local Podman inspection can record uncompressed
+image-store bytes. Registry-only pushes leave image bytes not collected rather
+than guessing compressed transfer size. The optional Kubernetes panel accepts real external
 image bytes, requests/limits, scheduling, image-pull, process-start, readiness and
 under-load observations with source and timestamp. Missing observations remain
 not collected; no examples or fixture measurements are loaded into live sessions.

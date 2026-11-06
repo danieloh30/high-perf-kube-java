@@ -358,6 +358,42 @@ await e.route("**/perf/info", (route) => {
             source: "TEST build log",
             timestamp: "2026-11-05T00:00:00Z",
           },
+          image: {
+            version: 1,
+            builder: "quarkus-container-image-jib",
+            runtime: "jvm",
+            image: "quay.io/danieloh30/high-perf-java:jvm-demo",
+            platform: "linux/amd64",
+            digest: "sha256:" + "a".repeat(64),
+            published: true,
+            image_bytes: 1234,
+            build_seconds: 2,
+            source_hash: "TEST-HASH",
+            source: "TEST ONLY Jib build",
+            timestamp: "2026-11-05T00:00:00Z",
+            image_size_source: "TEST ONLY local image size",
+          },
+          scale: {
+            kind: "scale",
+            status: "complete",
+            namespace: "test",
+            deployment: "test",
+            from_replicas: 1,
+            target: 100,
+            duration_ms: 4000,
+            source: "TEST ONLY oc fixture",
+            timestamp: "2026-11-05T00:00:00Z",
+            boundary: "TEST ONLY scale observation",
+            timeline: [
+              {
+                elapsed_ms: 4000,
+                ready: 100,
+                available: 100,
+                pending: 0,
+                terminating: 0,
+              },
+            ],
+          },
           launch: {
             duration_ms: 450,
             source: "TEST terminal monotonic clock",
@@ -481,6 +517,59 @@ try {
   assert.match(
     await e.locator("#comparison").textContent(),
     /Post-load snapshot/,
+  );
+  await e
+    .getByRole("button", { name: "05  Containerize", exact: true })
+    .click();
+  await e.waitForFunction(() =>
+    document
+      .getElementById("image-evidence")
+      .textContent.includes("Recorded Jib build"),
+  );
+  assert.match(
+    await e.locator("#image-evidence").textContent(),
+    /TEST ONLY Jib build/,
+  );
+  assert.equal(await e.locator("body").getAttribute("data-phase"), "4");
+  await e.screenshot({ path: "test-results/containerize-test-fixture.png" });
+  await e
+    .getByRole("button", { name: "Continue to OpenShift", exact: true })
+    .click();
+  await e
+    .locator("#openshift-console")
+    .fill("https://console.example/topology/ns/test");
+  await e.locator("#openshift-console").press("Tab");
+  assert.equal(
+    await e.locator("#open-openshift").getAttribute("href"),
+    "https://console.example/topology/ns/test",
+  );
+  await e.locator("#application-url").fill("https://app.example");
+  await e.locator("#application-url").press("Tab");
+  await e.route("https://app.example/q/health/ready", (route) =>
+    route.fulfill({
+      json: { status: "UP" },
+      headers: { "access-control-allow-origin": "*" },
+    }),
+  );
+  await e
+    .getByRole("button", { name: "Check deployed app", exact: true })
+    .click();
+  await e.waitForFunction(() =>
+    document
+      .getElementById("route-status")
+      .textContent.includes("readiness UP"),
+  );
+  assert.match(
+    await e.locator("#scale-out-command").textContent(),
+    /--replicas 100/,
+  );
+  assert.match(await e.locator("#scale-evidence").textContent(), /1 → 100/);
+  await e.screenshot({ path: "test-results/openshift-test-fixture.png" });
+  await e.reload();
+  await e.getByText("Connected · live", { exact: true }).waitFor();
+  assert.equal(
+    await e.locator("#openshift-console").inputValue(),
+    "https://console.example/topology/ns/test",
   );
   console.log(
     "Positive two-runtime fixture checks passed: baseline preservation, prime workload, insights, automatic evidence, OS RSS, build costs, snapshot phase selection",

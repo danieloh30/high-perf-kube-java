@@ -1,7 +1,7 @@
 # Runtime Lab: JVM versus Native Image
 
 A presentation-ready SPA served by the existing Quarkus application. The guided
-story is **Start → Load → Switch runtime → Compare → Kubernetes readiness**.
+story is **Start → Load → Switch runtime → Compare → Containerize → OpenShift**.
 Java 25 · Quarkus 3.40.1.1 · all assets bundled locally.
 
 Start the complete local workflow from this checkout:
@@ -23,6 +23,17 @@ Open http://localhost:8080. Read [DEMO.md](DEMO.md) for preparation commands,
 a 5–7 minute presenter script, packaged JVM/native execution, build-cost recording,
 optional Kubernetes observations and curl fallback.
 
+For the optional container/cluster chapter, prepare and push the JVM image before presenting:
+
+```sh
+./demo.sh prepare --image quay.io/danieloh30/high-perf-java:jvm-demo --platform linux/amd64 --push-image
+```
+
+Choose your cluster's platform and configure registry credentials first. The build
+explicitly uses `quarkus-container-image-jib`. See DEMO.md for local Podman checks,
+console deployment and the 1 → 100 → 1 scaling exercise. No real registry push or
+cluster scale is performed by repository tests.
+
 ## Presenter features
 
 - High-contrast light/dark themes, fullscreen and 1080p projector layout.
@@ -35,6 +46,7 @@ optional Kubernetes observations and curl fallback.
   count, median, min and max. No benchmark requests on connect, poll or navigation.
 - Process identities on info and benchmark responses prevent results mixing after
   runtime changes or same-runtime restarts. Partial failures retain successful calls.
+- Compare highlights AOT/JIT, computation, startup and memory with readable concept cards.
 - Compare includes measured computation insights and an optional prime-sieve workload.
 - Pre-load and post-load snapshots remain separate; missed baselines stay explicit.
 - Comparisons check input and output agreement; server and browser durations have
@@ -44,7 +56,13 @@ optional Kubernetes observations and curl fallback.
 - OS process RSS is collected separately from heap; container cgroup usage is
   collected only when identified and readable. Image bytes are not applicable
   to the host executable workflow. External cluster/image observations stay labeled.
-- Optional imported Kubernetes observations; no cluster or shell access in the SPA.
+- Existing Jib extension builds a JVM image during `prepare --image … --push-image`;
+  image work is isolated from host artifacts. The SPA displays image receipts.
+- OpenShift console handoff copies a tag/digest and opens your configured Topology URL.
+- A bounded Route readiness check separates browser access from replica readiness.
+- `demo.sh scale --namespace … --deployment … --replicas 100` (then 1) records
+  Ready/Available convergence through the authenticated oc CLI. The SPA displays
+  timestamped observations; it has no shell or Kubernetes process-control endpoint.
 
 Sessions use localStorage key `runtime-lab.session.v2`; v1 sessions migrate with
 legacy snapshots labeled as having unknown phase. Export before clearing

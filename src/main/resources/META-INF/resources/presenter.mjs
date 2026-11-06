@@ -1,4 +1,12 @@
 import {
+  deploymentDefaults,
+  deploymentCommands,
+  consoleLink,
+  deployReference,
+  matchingReceipt,
+  scaleCommands,
+} from "./deployment.mjs?v=20261106-4";
+import {
   fresh,
   reconcileReset,
   KEY,
@@ -18,7 +26,7 @@ import {
   settingsWarnings,
   numeric,
   batch,
-} from "./session.mjs?v=20261106-3";
+} from "./session.mjs?v=20261106-4";
 const $ = (id) => document.getElementById(id);
 let session;
 try {
@@ -61,12 +69,18 @@ const phases = [
     "Compare",
     "Compare the same work.",
     "First samples and repeated medians, with explicit measurement boundaries.",
-    "Continue to Kubernetes",
+    "Continue to Containerize",
   ],
   [
-    "Kubernetes",
-    "From process to Ready.",
-    "Bring external observations into the story without conflating readiness and performance.",
+    "Containerize",
+    "Package once. Run anywhere compatible.",
+    "Inspect the prepared Quarkus + Jib image and reuse it locally or in your cluster.",
+    "Continue to OpenShift",
+  ],
+  [
+    "OpenShift",
+    "Take the image to your cluster.",
+    "Copy the image reference and open your prepared OpenShift console.",
     "Export session",
   ],
 ];
@@ -150,7 +164,7 @@ function render() {
   $("workload-description").textContent =
     BENCHMARKS[session.benchmark].description;
   $("primary").disabled = busy || (session.phase < 2 && !connected);
-  ["start", "load", "switch", "compare", "kubernetes"].forEach(
+  ["start", "load", "switch", "compare", "containerize", "kubernetes"].forEach(
     (id, i) => ($(id).hidden = session.phase !== i),
   );
   $("connection").textContent = busy
@@ -238,6 +252,7 @@ function render() {
   renderSelectors();
   renderComparison();
   renderObservations();
+  renderDeployment();
   renderRaw();
 }
 function renderSelectors() {
@@ -283,12 +298,36 @@ function renderSelectors() {
     fillRunFields();
   }
 }
+function highlightInsight(text) {
+  const target = $("computation-insight");
+  target.replaceChildren();
+  const pattern =
+    /Native Image|JVM|[0-9]+(?:\.[0-9]+)?%|server computation time|Results and inputs match|steady state|unavailable/g;
+  let end = 0;
+  for (const match of text.matchAll(pattern)) {
+    target.append(document.createTextNode(text.slice(end, match.index)));
+    const token = el(
+      "mark",
+      match[0],
+      match[0] === "JVM"
+        ? "jvm"
+        : match[0] === "Native Image"
+          ? "native"
+          : match[0].endsWith("%")
+            ? "insight-number"
+            : "",
+    );
+    target.append(token);
+    end = match.index + match[0].length;
+  }
+  target.append(document.createTextNode(text.slice(end)));
+}
 function renderComparison() {
   const benchmark = session.benchmark;
   const a = selectedRun("jvm"),
     b = selectedRun("native-image"),
     grid = el("div", "", "compare-grid");
-  $("computation-insight").textContent = insight(a, b, benchmark);
+  highlightInsight(insight(a, b, benchmark));
   $("insight-workload").textContent = BENCHMARKS[benchmark].description;
   grid.append(
     el("div", "MEASUREMENT"),
@@ -626,6 +665,26 @@ async function poll() {
         );
       }
       active = observe(session, next);
+      const image =
+        next.demo_evidence?.status === "collected"
+          ? next.demo_evidence.data?.image
+          : null;
+      if (
+        image?.builder === "quarkus-container-image-jib" &&
+        image.source_hash === next.demo_evidence.data.source_hash
+      ) {
+        session.deployment.receipt = structuredClone(image);
+        if (!session.deployment.selectedByUser) {
+          session.deployment.image = image.image;
+          session.deployment.platform = image.platform;
+        }
+      }
+      const scale =
+        next.demo_evidence?.status === "collected"
+          ? next.demo_evidence.data?.scale
+          : null;
+      if (scale?.kind === "scale")
+        session.deployment.scale = structuredClone(scale);
       info = next;
       if (
         session.phase === 2 &&
@@ -757,9 +816,7 @@ $("primary").onclick = async () => {
         )
       ) {
         session.phase = 3;
-        tell(
-          "Post-load snapshot saved. Compare the same workload and review the insights.",
-        );
+        tell("");
       } else {
         session.switchFrom = active.id;
         session.phase = 2;
@@ -768,6 +825,7 @@ $("primary").onclick = async () => {
     }
   } else if (session.phase === 2) session.phase = 0;
   else if (session.phase === 3) session.phase = 4;
+  else if (session.phase === 4) session.phase = 5;
   else exportSession();
   persist();
   render();
@@ -815,6 +873,203 @@ $("reset-session").onclick = async () => {
     "New comparison session. For a fresh process, use ./demo.sh down then ./demo.sh up.",
   );
   poll();
+};
+async function copyText(text) {
+  if (!text)
+    return tell("Enter a valid tagged image reference and platform first.");
+  try {
+    await navigator.clipboard.writeText(text);
+    tell(
+      "Copied. Execute commands in the terminal; the browser does not run them.",
+    );
+  } catch {
+    tell("Clipboard unavailable. Select and copy the displayed text manually.");
+  }
+}
+function renderDeployment() {
+  const settings = session.deployment || deploymentDefaults(),
+    commands = deploymentCommands(settings),
+    receipt = matchingReceipt(settings);
+  for (const [id, key] of [
+    ["container-image", "image"],
+    ["container-platform", "platform"],
+    ["openshift-console", "consoleUrl"],
+    ["openshift-project", "namespace"],
+    ["openshift-deployment", "deployment"],
+    ["application-url", "applicationUrl"],
+  ])
+    if (document.activeElement !== $(id)) $(id).value = settings[key] || "";
+
+  $("podman-command").textContent =
+    commands?.run || "Choose a valid image first.";
+  $("copy-podman-run").disabled = !commands;
+  const reference = deployReference(settings);
+  $("deploy-image-reference").textContent =
+    reference || "Configure a tagged image in 05 Containerize first.";
+  $("copy-deploy-image").disabled = !reference;
+  const link = consoleLink(settings.consoleUrl);
+  if (link) {
+    $("open-openshift").href = link;
+    $("open-openshift").removeAttribute("aria-disabled");
+  } else {
+    $("open-openshift").removeAttribute("href");
+    $("open-openshift").setAttribute("aria-disabled", "true");
+  }
+  const panel = $("image-evidence");
+  panel.replaceChildren();
+  if (receipt) {
+    panel.append(
+      el(
+        "h3",
+        receipt.published
+          ? "Recorded Jib build + push"
+          : "Recorded Jib build + local load",
+      ),
+      el("p", `${receipt.image} · ${receipt.platform}`, "image-reference"),
+      el("p", receipt.digest, "image-reference"),
+      el(
+        "p",
+        `Image build: ${fmt(receipt.build_seconds, " s")} · local image bytes: ${numeric(receipt.image_bytes) ? fmt(receipt.image_bytes) : "not collected"}`,
+      ),
+      el(
+        "p",
+        `${receipt.image_size_source} · ${receipt.source} · ${receipt.timestamp}`,
+        "footnote",
+      ),
+    );
+  } else
+    panel.append(
+      el("h3", "No matching image receipt"),
+      el(
+        "p",
+        "No matching image has been recorded for this selection. Prepare/push it before presenting with demo.sh prepare --image ... --push-image. A successful Quarkus Jib build writes a receipt; source-matched receipts attach on the next poll. A configured pre-pushed tag is not automatically verified.",
+      ),
+    );
+  const scaling = scaleCommands(settings);
+  $("scale-out-command").textContent =
+    scaling?.out || "Enter valid project and Deployment names.";
+  $("scale-in-command").textContent = scaling?.inside || "";
+  $("copy-scale-out").disabled = !scaling;
+  $("copy-scale-in").disabled = !scaling;
+  const route = consoleLink(settings.applicationUrl);
+  if (route) {
+    $("open-route").href = route;
+    $("open-route").removeAttribute("aria-disabled");
+  } else {
+    $("open-route").removeAttribute("href");
+    $("open-route").setAttribute("aria-disabled", "true");
+  }
+  const recorded = settings.scale,
+    panelScale = $("scale-evidence");
+  panelScale.replaceChildren();
+  if (recorded) {
+    panelScale.append(
+      el(
+        "h3",
+        `Recorded scale: ${recorded.from_replicas} → ${recorded.target} · ${recorded.status}`,
+      ),
+      el(
+        "p",
+        `${recorded.namespace}/${recorded.deployment} · ${numeric(recorded.duration_ms) ? fmt(recorded.duration_ms / 1000, " s") : "target convergence not measured"}`,
+      ),
+      el("p", `${recorded.boundary} · ${recorded.timestamp}`, "footnote"),
+    );
+    if (recorded.reason) panelScale.append(el("p", recorded.reason));
+    const trace = el(
+      "pre",
+      (recorded.timeline || [])
+        .map(
+          (row) =>
+            `${(row.elapsed_ms / 1000).toFixed(1)}s   Ready ${row.ready}/${recorded.target}   Available ${row.available}   Pending ${row.pending}   Terminating ${row.terminating}`,
+        )
+        .join("\n"),
+    );
+    panelScale.append(trace);
+    panelScale.append(
+      el(
+        "p",
+        "Recorded controller/owned-pod convergence, not per-pod startup or an SLO. Route access may succeed before all replicas are ready.",
+        "footnote",
+      ),
+    );
+  } else
+    panelScale.append(
+      el(
+        "p",
+        "Not collected. Run the scale command after deployment. API polling, scheduling, image pull, probes and termination all contribute to the observation.",
+      ),
+    );
+}
+for (const [id, key] of [
+  ["container-image", "image"],
+  ["container-platform", "platform"],
+  ["openshift-console", "consoleUrl"],
+  ["openshift-project", "namespace"],
+  ["openshift-deployment", "deployment"],
+  ["application-url", "applicationUrl"],
+])
+  $(id).onchange = () => {
+    session.deployment[key] = $(id).value.trim();
+    if (key === "image" || key === "platform")
+      session.deployment.selectedByUser = true;
+    persist();
+    renderDeployment();
+  };
+$("copy-podman-run").onclick = () =>
+  copyText(deploymentCommands(session.deployment)?.run);
+$("copy-deploy-image").onclick = async () => {
+  const ref = deployReference(session.deployment);
+  if (!ref) return tell("Configure a tagged image first.");
+  try {
+    await navigator.clipboard.writeText(ref);
+    tell(
+      "Image reference copied. Open the prepared project in OpenShift, then Add to Project → Container Image.",
+    );
+  } catch {
+    tell("Select and copy the displayed image reference manually.");
+  }
+};
+$("copy-scale-out").onclick = () =>
+  copyText(scaleCommands(session.deployment)?.out);
+$("copy-scale-in").onclick = () =>
+  copyText(scaleCommands(session.deployment)?.inside);
+$("check-route").onclick = async () => {
+  const address = consoleLink(session.deployment.applicationUrl);
+  if (!address) return tell("Enter an HTTPS application Route URL first.");
+  const button = $("check-route");
+  button.disabled = true;
+  const controller = new AbortController(),
+    timer = setTimeout(() => controller.abort(), 5000),
+    start = performance.now();
+  try {
+    const url = new URL(address);
+    url.pathname = url.pathname.replace(/\/$/, "") + "/q/health/ready";
+    url.search = "";
+    url.hash = "";
+    const response = await fetch(url, {
+        signal: controller.signal,
+        cache: "no-store",
+        mode: "cors",
+        credentials: "omit",
+      }),
+      data = await response.json();
+    $("route-status").textContent =
+      `Route observation ${url.origin}${url.pathname} at ${new Date().toISOString()}: HTTP ${response.status}, readiness ${data.status || "unknown"}, browser HTTP ${(performance.now() - start).toFixed(1)} ms. One routed response does not establish that all replicas are ready.`;
+  } catch (error) {
+    $("route-status").textContent =
+      `Route could not be checked: ${error.message}. This may be network, TLS or CORS; it is not a benchmark failure. Open the Route directly or check the image's allowed dashboard origin.`;
+  } finally {
+    clearTimeout(timer);
+    button.disabled = false;
+  }
+};
+$("open-openshift").onclick = (e) => {
+  if (!consoleLink(session.deployment.consoleUrl)) {
+    e.preventDefault();
+    tell(
+      "Enter an HTTPS console or Topology URL, without embedded credentials or login callback tokens.",
+    );
+  }
 };
 $("theme").onclick = () => {
   session.theme = session.theme === "dark" ? "light" : "dark";

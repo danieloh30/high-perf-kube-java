@@ -27,6 +27,23 @@ public class DemoEvidence {
             Map<String, Object> data = mapper.readValue(path.toFile(), new TypeReference<Map<String, Object>>() {});
             if (!processId.equals(data.get("process_id")))
                 return Map.of("status", "not-collected", "reason", "Evidence belongs to a different process; excluded.");
+            // Image receipts describe source artifacts, not the current process's memory.
+            Path imageReceipt = path.getParent().getParent().resolve("images/latest.json");
+            if (Files.isRegularFile(imageReceipt) && Files.size(imageReceipt) <= 1_048_576) {
+                try {
+                    Map<String, Object> image = mapper.readValue(imageReceipt.toFile(), new TypeReference<Map<String, Object>>() {});
+                    if ("quarkus-container-image-jib".equals(image.get("builder")) && data.get("source_hash") != null
+                            && data.get("source_hash").equals(image.get("source_hash")))
+                        data.put("image", image);
+                } catch (Exception ignored) { /* Keep the process evidence when an image receipt is incomplete. */ }
+            }
+            Path scaleReceipt = path.getParent().getParent().resolve("scales/latest.json");
+            if (Files.isRegularFile(scaleReceipt) && Files.size(scaleReceipt) <= 1_048_576) {
+                try {
+                    Map<String, Object> scale = mapper.readValue(scaleReceipt.toFile(), new TypeReference<Map<String, Object>>() {});
+                    if ("scale".equals(scale.get("kind"))) data.put("scale", scale);
+                } catch (Exception ignored) {}
+            }
             return Map.of("status", "collected", "data", data);
         } catch (Exception e) {
             return Map.of("status", "not-collected", "reason", "Launcher evidence could not be read; no values inferred.");

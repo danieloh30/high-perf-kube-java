@@ -1,3 +1,4 @@
+import { deploymentDefaults } from "./deployment.mjs?v=20261106-4";
 export const KEY = "runtime-lab.session.v2";
 export const LEGACY_KEY = "runtime-lab.session.v1";
 export const numeric = (x) =>
@@ -22,6 +23,8 @@ export const BENCHMARKS = {
 export function fresh() {
   return {
     version: 2,
+    presentationVersion: 2,
+    deployment: deploymentDefaults(),
     name: "Untitled comparison",
     revision: "",
     theme: "dark",
@@ -42,10 +45,16 @@ export function decode(text) {
     !["light", "dark"].includes(s.theme) ||
     !Number.isInteger(s.phase) ||
     s.phase < 0 ||
-    s.phase > 4
+    s.phase > 5
   )
     throw Error("Invalid or unsupported session");
   const legacy = s.version === 1;
+  if (!s.presentationVersion && s.phase === 4) s.phase = 5;
+  s.presentationVersion = 2;
+  s.deployment = {
+    ...deploymentDefaults(),
+    ...(s.deployment && typeof s.deployment === "object" ? s.deployment : {}),
+  };
   s.benchmark = s.benchmark || "fib";
   if (!BENCHMARKS[s.benchmark]) throw Error("Invalid benchmark");
   for (const r of s.runs) {
@@ -245,7 +254,7 @@ export function insight(a, b, benchmark = "fib") {
   const runtime = c.a >= c.b ? "Native Image" : "JVM",
     percent =
       (100 * (Math.max(c.a, c.b) - Math.min(c.a, c.b))) / Math.max(c.a, c.b);
-  return `${runtime} took ${percent.toFixed(1)}% less server computation time by repeated median in these runs (${stats(left).count} JVM / ${stats(right).count} native samples). Results and inputs match. This does not establish a general runtime advantage or steady state.`;
+  return `${runtime} took ${percent.toFixed(1)}% less server computation time by repeated median (${stats(left).count} JVM / ${stats(right).count} native samples). Results and inputs match. Few calls; not a steady-state or SLO test.`;
 }
 export function settingsWarnings(a, b) {
   const warnings = [

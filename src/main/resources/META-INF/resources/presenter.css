@@ -480,3 +480,250 @@ body[data-phase="3"] #notice {
 .compare-workload select:focus-visible {
   outline: 3px solid var(--native);
 }
+
+.insights {
+  border: 1px solid var(--line);
+  border-left: 4px solid var(--native);
+  border-radius: 12px;
+  background: linear-gradient(
+    110deg,
+    color-mix(in srgb, var(--native) 8%, var(--card)),
+    var(--card) 65%
+  );
+}
+.insights > b {
+  font-size: 14px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+#computation-insight {
+  font-size: 17px;
+  line-height: 1.6;
+  margin: 5px 0;
+}
+mark {
+  background: color-mix(in srgb, var(--accent) 16%, transparent);
+  color: var(--text);
+  padding: 1px 5px;
+  border-radius: 4px;
+  font-weight: 750;
+}
+mark.jvm {
+  color: var(--jvm);
+  background: color-mix(in srgb, var(--jvm) 12%, transparent);
+}
+mark.native {
+  color: var(--native);
+  background: color-mix(in srgb, var(--native) 12%, transparent);
+}
+mark.insight-number {
+  font-size: 21px;
+  font-weight: 850;
+}
+.concept-grid,
+.jib-benefits {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 14px;
+}
+.concept-grid {
+  margin: 14px 0;
+}
+.concept-grid article {
+  background: var(--bg);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 16px;
+}
+.concept-grid h3 {
+  margin: 8px 0;
+  font-size: 21px;
+}
+.concept-grid p {
+  font-size: 16px;
+}
+.concept-label {
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: 0.12em;
+  color: var(--muted);
+}
+.insight-limits {
+  padding: 10px 14px;
+  border-left: 3px solid var(--jvm);
+  background: var(--bg);
+}
+.insights details[open] {
+  max-height: none;
+  overflow: visible;
+}
+.image-pipeline {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  justify-content: center;
+  flex-wrap: wrap;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 14px;
+  margin-bottom: 18px;
+  font-size: 18px;
+}
+.image-pipeline strong {
+  color: var(--native);
+}
+.image-pipeline i {
+  font-style: normal;
+  color: var(--muted);
+}
+.jib-benefits .card {
+  padding: 18px;
+}
+.jib-benefits h3 {
+  margin: 7px 0;
+  font-size: 23px;
+}
+.jib-benefits p {
+  font-size: 17px;
+  margin: 6px 0;
+}
+.deployment-workspace {
+  margin-top: 18px;
+}
+.deployment-workspace .card {
+  padding: 20px;
+}
+.deployment-workspace pre {
+  margin: 12px 0;
+  padding: 12px;
+  max-height: 110px;
+  font-size: 15px;
+}
+.deployment-workspace label {
+  margin: 6px 0;
+}
+.deployment-workspace details {
+  margin-top: 12px;
+  padding-top: 12px;
+}
+.image-reference {
+  font-family: ui-monospace, monospace;
+  font-size: 15px;
+  overflow-wrap: anywhere;
+}
+.external-link {
+  display: inline-block;
+  color: var(--jvm);
+  font-size: 16px;
+  margin: 8px 8px 8px 0;
+  text-decoration: underline;
+}
+.external-link[aria-disabled="true"] {
+  opacity: 0.5;
+  cursor: default;
+}
+.handoff-steps {
+  font-size: 20px;
+  line-height: 1.7;
+  padding-left: 26px;
+}
+#kubernetes .card {
+  padding: 22px;
+}
+#kubernetes p {
+  font-size: 17px;
+}
+#kubernetes details {
+  margin-top: 14px;
+  padding-top: 12px;
+}
+body[data-phase="4"] .hero,
+body[data-phase="5"] .hero {
+  margin: 22px 0 16px;
+}
+body[data-phase="4"] h1,
+body[data-phase="5"] h1 {
+  font-size: 44px;
+}
+nav button {
+  font-size: 17px;
+}
+.insights .concept-grid strong {
+  color: var(--text);
+}
+@media (max-width: 1000px) {
+  .concept-grid,
+  .jib-benefits {
+    grid-template-columns: 1fr;
+  }
+  .image-pipeline {
+    justify-content: flex-start;
+  }
+  .handoff-steps {
+    font-size: 18px;
+  }
+}
+
+.concept-label.native {
+  color: var(--native);
+}
+.concept-label.jvm {
+  color: var(--jvm);
+}
+body[data-phase="4"] header,
+body[data-phase="5"] header {
+  padding-top: 16px;
+  padding-bottom: 16px;
+}
+body[data-phase="4"] main,
+body[data-phase="5"] main {
+  padding-top: 18px;
+}
+body[data-phase="4"] .hero,
+body[data-phase="5"] .hero {
+  margin: 12px 0 10px;
+}
+body[data-phase="4"] h1,
+body[data-phase="5"] h1 {
+  font-size: 38px;
+  margin: 6px 0 10px;
+}
+body[data-phase="4"] .hero p,
+body[data-phase="5"] .hero p {
+  font-size: 17px;
+  margin: 6px 0;
+}
+#kubernetes label {
+  margin: 6px 0;
+}
+#kubernetes input {
+  padding: 8px;
+}
+#kubernetes h2 {
+  font-size: 28px;
+  margin: 10px 0 14px;
+}
+#kubernetes .footnote {
+  font-size: 14px;
+}
+#kubernetes #scale-evidence pre {
+  max-height: 220px;
+  overflow: auto;
+  font-size: 15px;
+}
+.image-reference {
+  max-width: 100%;
+}
+
+body[data-phase="3"] #details {
+  margin-top: 10px;
+  padding-top: 12px;
+}
+body[data-phase="3"] footer {
+  margin-top: 10px;
+}
+body[data-phase="3"] header {
+  padding-top: 12px;
+  padding-bottom: 12px;
+}

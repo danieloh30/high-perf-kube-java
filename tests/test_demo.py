@@ -42,6 +42,8 @@ from pathlib import Path
 import os,sys
 p=Path('target');p.mkdir(exist_ok=True)
 with Path('build-calls').open('a') as f:f.write(' '.join(sys.argv[1:])+'\\n')
+if '-Dquarkus.container-image.builder=jib' in sys.argv:
+    (p/'jib-image.digest').write_text('sha256:'+'a'*64)
 if '-Dnative' in sys.argv:
     if os.environ.get('FAIL_NATIVE'):sys.exit(9)
     src=Path(os.environ['FAKE_NATIVE_SOURCE'])
@@ -230,6 +232,60 @@ class DemoTests(unittest.TestCase):
         with self.assertRaisesRegex(demo.DemoError,'symlinked'):
             demo.Demo(another)
         self.assertEqual(marker.read_text(),'keep')
+
+    def test_jib_push_is_explicit_and_isolated_from_prepared_artifacts(self):
+        (self.root/'target').mkdir();(self.root/'target/keep').write_text('host artifact')
+        with patch.object(demo.shutil,'which',return_value=None):
+            receipt=self.d.image('quay.io/example/demo:jvm-test','linux/amd64',True)
+        self.assertEqual(receipt['builder'],'quarkus-container-image-jib')
+        self.assertTrue(receipt['published']);self.assertIsNone(receipt['image_bytes'])
+        self.assertIn('-Dquarkus.container-image.builder=jib',receipt['command'])
+        self.assertIn('-Dquarkus.container-image.push=true',receipt['command'])
+        self.assertFalse(any('docker-executable-name' in x for x in receipt['command']))
+        self.assertEqual((self.root/'target/keep').read_text(),'host artifact')
+        self.assertEqual(demo.read_json(self.d.home/'images/latest.json')['digest'],'sha256:'+'a'*64)
+
+    def test_image_rejects_registry_web_urls_and_prepare_requires_explicit_push_image(self):
+        with self.assertRaisesRegex(demo.DemoError,'tagged image'):
+            self.d.image('https://quay.io/repository/example/demo','linux/amd64')
+        with patch.object(demo.sys,'argv',['demo.sh','prepare','--push-image']),patch.object(demo,'Demo',return_value=self.d),patch.object(self.d,'prepare') as prepare:
+            self.assertEqual(demo.main(),1);prepare.assert_not_called()
+
+    def run_scale_fixture(self, original, target, failure=False):
+        calls=[];poll=[0]
+        template={'spec':{'containers':[{'name':'app','image':'quay.io/example/demo:jvm','resources':{'requests':{'cpu':'100m'}}}]}}
+        def result(args,**kwargs):
+            calls.append(args)
+            if 'config' in args:return subprocess.CompletedProcess(args,0,'test-context','')
+            if 'scale' in args:return subprocess.CompletedProcess(args,0,'scaled','')
+            kind=args[args.index('get')+1]
+            if kind=='deployment':
+                poll[0]+=1;first=poll[0]==1;ready=original if poll[0]<3 else target
+                value={'metadata':{'uid':'dep','generation':2},'spec':{'replicas':original if first else target,'selector':{'matchLabels':{'app':'demo'}},'template':template},'status':{'readyReplicas':ready,'availableReplicas':ready,'updatedReplicas':ready,'replicas':ready,'observedGeneration':2}}
+            elif kind=='replicasets':value={'items':[{'metadata':{'uid':'rs','ownerReferences':[{'uid':'dep'}]}}]}
+            else:
+                if failure:return subprocess.CompletedProcess(args,1,'','TEST permission denied')
+                count=target if poll[0]>=3 else original
+                value={'items':[{'metadata':{'ownerReferences':[{'uid':'rs'}]},'status':{'phase':'Running','conditions':[{'type':'Ready','status':'True'}]}} for _ in range(count)]}
+            return subprocess.CompletedProcess(args,0,json.dumps(value),'')
+        with patch.object(demo.shutil,'which',return_value='oc'),patch.object(demo.subprocess,'run',side_effect=result),patch.object(demo.time,'sleep'):
+            result=self.d.scale('demo','app',target,30)
+        return result,calls
+
+    def test_scale_out_and_in_require_observed_convergence(self):
+        for original,target in [(1,100),(100,1)]:
+            record,calls=self.run_scale_fixture(original,target)
+            self.assertEqual(record['status'],'complete');self.assertGreaterEqual(record['duration_ms'],0)
+            self.assertEqual(len(record['timeline']),2)
+            self.assertEqual(record['timeline'][-1]['ready'],target)
+            self.assertTrue(any('--replicas='+str(target) in x for x in calls))
+            self.assertNotIn('token',json.dumps(record))
+
+    def test_scale_failures_are_recorded_without_a_success_duration(self):
+        with self.assertRaisesRegex(demo.DemoError,'permission denied'):
+            self.run_scale_fixture(1,100,True)
+        record=demo.read_json(self.d.home/'scales/latest.json')
+        self.assertEqual(record['status'],'failed');self.assertIsNone(record['duration_ms'])
 
     def test_peak_memory_platform_units_and_unknown(self):
         self.assertEqual(demo.peak_mib('1048576  maximum resident set size','Darwin'),1)
